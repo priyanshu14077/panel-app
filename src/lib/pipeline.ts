@@ -1,8 +1,8 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { askResearch, askStructured, askText, streamChat } from "./claude";
-import { compileResume, type PdfCheck } from "./compile";
-import { appendProfileSection, parseContact, readProfile, resumeText } from "./files";
+import { compileResume, pdfName, type PdfCheck } from "./compile";
+import { appendProfileSection, improvedFolderOf, parseContact, readProfile, resumeText } from "./files";
 import { knowledgeDigest, loadKnowledge, shortlistRepos } from "./knowledge/cards";
 import { renderLatex, renderText } from "./latex";
 import { IMPROVED_DIR, PANEL_DIR, safeSegment } from "./paths";
@@ -49,6 +49,12 @@ export interface Run {
   id: string;
   createdAt: string;
   resumeFile: string;
+  // The base resume this run's chain started from. Differs from resumeFile when
+  // the panel reviews a PDF an earlier run produced; evals ground against it.
+  originResume?: string;
+  // Where the PDF goes. Set when reviewing an improved PDF for the same posting,
+  // so each iteration replaces (and archives) the previous one in one folder.
+  outputFolder?: string;
   jobText: string;
   reviews: Review[];
   synthesis?: Synthesis;
@@ -205,6 +211,7 @@ const TRIMS: ((d: ResumeDoc) => boolean)[] = [
 // Only the PDF is trimmed: the full rebuild stays in the run for later edits.
 export async function compileFitted(doc: ResumeDoc, profile: string, folder: string): Promise<NonNullable<Run["pdf"]>> {
   const contact = parseContact(profile);
+  await archivePrevious(path.join(IMPROVED_DIR, folder), pdfName(contact.name));
   const fitted: ResumeDoc = structuredClone(doc);
   for (let attempt = 0; ; attempt++) {
     const { pdf, check } = await compileResume(path.join(IMPROVED_DIR, folder), await renderLatex(fitted, contact), contact.name);
@@ -212,7 +219,34 @@ export async function compileFitted(doc: ResumeDoc, profile: string, folder: str
   }
 }
 
-const buildPdf = (run: Run, doc: ResumeDoc, profile: string) => compileFitted(doc, profile, outputFolder(run.synthesis!, run.createdAt));
+// Keeps the PDF a rebuild is about to replace, which may be the very file the
+// panel just reviewed. Runs once per rebuild, not per fit-to-page attempt.
+async function archivePrevious(dir: string, name: string): Promise<void> {
+  const current = path.join(dir, name);
+  try {
+    const stat = await fs.stat(current);
+    const stamp = stat.mtime.toISOString().replace(/[:.]/g, "-");
+    await fs.mkdir(path.join(dir, "archive"), { recursive: true });
+    await fs.rename(current, path.join(dir, "archive", `${stamp}-${name}`));
+  } catch {} // nothing compiled here yet
+}
+
+// Follows an improved PDF back to the run that produced it: the base resume the
+// chain started from, and the folder to keep iterating in when the posting is
+// the same one.
+async function lineageOf(resumeFile: string, jobText: string): Promise<{ origin: string; folder?: string }> {
+  const folder = improvedFolderOf(resumeFile);
+  if (folder === null) return { origin: resumeFile };
+  const producer = (await loadAllRuns()).filter((r) => r.pdf?.folder === folder).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  if (!producer) return { origin: resumeFile };
+  return {
+    origin: producer.originResume ?? producer.resumeFile,
+    folder: producer.jobText.trim() === jobText.trim() ? folder : undefined,
+  };
+}
+
+const buildPdf = (run: Run, doc: ResumeDoc, profile: string) =>
+  compileFitted(doc, profile, run.outputFolder ?? outputFolder(run.synthesis!, run.createdAt));
 
 async function writeReports(run: Run, profile: string): Promise<void> {
   const s = run.synthesis!;
@@ -221,7 +255,7 @@ async function writeReports(run: Run, profile: string): Promise<void> {
   const panel = [
     `# Hiring panel: ${s.job.company}, ${s.job.role}${s.job.jobId ? ` (${s.job.jobId})` : ""}`,
     "",
-    `Resume reviewed: ${run.resumeFile}. Run ${run.createdAt}.`,
+    `Resume reviewed: ${run.resumeFile}${run.originResume && run.originResume !== run.resumeFile ? ` (built from ${run.originResume})` : ""}. Run ${run.createdAt}.`,
     "",
     "## The seven verdicts",
     "",
@@ -298,6 +332,9 @@ export function runPanel(input: { jobText: string; resumeFile: string }): AsyncG
   };
   return guarded(run, async function* () {
     yield { type: "started", runId: run.id };
+    const lineage = await lineageOf(input.resumeFile, input.jobText);
+    run.originResume = lineage.origin;
+    run.outputFolder = lineage.folder;
     const [resume, knowledge] = await Promise.all([resumeText(input.resumeFile), loadKnowledge()]);
     // Picked while the reviewers read, so it adds no wait.
     const shortlist = shortlistRepos(knowledge, input.jobText, { runId: run.id, action: "shortlist" });
