@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { JOBS_DIR, PROFILE_PATH, RESUME_DIR } from "./paths";
+import { IMPROVED_DIR, JOBS_DIR, PROFILE_PATH, RESUME_DIR, safeSegment } from "./paths";
 
 const run = promisify(execFile);
 
@@ -51,14 +51,77 @@ export async function appendProfileSection(heading: string, lines: string[]): Pr
   await fs.writeFile(PROFILE_PATH, `${profile.slice(0, at)}${section}${profile.slice(end)}`.trimEnd() + "\n");
 }
 
-export async function listResumes(): Promise<string[]> {
-  const names = await fs.readdir(RESUME_DIR);
-  return names.filter((n) => n.toLowerCase().endsWith(".pdf")).sort();
+// A resume the panel can review: one of your own PDFs in resume/, or a PDF
+// the pipeline compiled into improved resume/<job>/. Ids are
+// "base:<file.pdf>" and "improved:<folder>"; a bare file name is a legacy
+// base id from runs made before improved PDFs could be reviewed.
+export interface ResumeOption {
+  id: string;
+  group: "base" | "improved";
+  label: string;
+  folder?: string;
+  updatedAt: string;
 }
 
-export async function resumeText(file: string): Promise<string> {
-  const name = path.basename(file); // never leave the resume folder
-  const { stdout } = await run("pdftotext", ["-layout", path.join(RESUME_DIR, name), "-"]);
+const isPdf = (n: string) => n.toLowerCase().endsWith(".pdf");
+
+export function improvedFolderOf(id: string): string | null {
+  return id.startsWith("improved:") ? id.slice("improved:".length) : null;
+}
+
+async function improvedPdf(folder: string): Promise<string | null> {
+  if (safeSegment(folder) !== folder) return null; // never leave improved resume/
+  try {
+    // Local-only app reading the user's own folders, so tracing doesn't matter.
+    const name = (await fs.readdir(path.join(/*turbopackIgnore: true*/ IMPROVED_DIR, folder))).find(isPdf);
+    return name ? path.join(/*turbopackIgnore: true*/ IMPROVED_DIR, folder, name) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function resumePath(id: string): Promise<string> {
+  const folder = improvedFolderOf(id);
+  if (folder !== null) {
+    const pdf = await improvedPdf(folder);
+    if (!pdf) throw new Error(`No compiled PDF in improved resume/${folder}`);
+    return pdf;
+  }
+  const name = path.basename(id.replace(/^base:/, "")); // never leave resume/
+  return path.join(RESUME_DIR, name);
+}
+
+// Base resumes A-Z, then improved PDFs newest first. `labels` maps an improved
+// folder to the job it was built for ("LimeChat · SDE").
+export async function listResumes(labels: Map<string, string> = new Map()): Promise<ResumeOption[]> {
+  const base: ResumeOption[] = [];
+  for (const name of (await fs.readdir(RESUME_DIR)).filter(isPdf).sort()) {
+    const stat = await fs.stat(path.join(RESUME_DIR, name));
+    base.push({ id: `base:${name}`, group: "base", label: name, updatedAt: stat.mtime.toISOString() });
+  }
+  const improved: ResumeOption[] = [];
+  let folders: string[] = [];
+  try {
+    folders = await fs.readdir(IMPROVED_DIR);
+  } catch {}
+  for (const folder of folders) {
+    const pdf = await improvedPdf(folder);
+    if (!pdf) continue;
+    const stat = await fs.stat(/*turbopackIgnore: true*/ pdf);
+    improved.push({
+      id: `improved:${folder}`,
+      group: "improved",
+      label: labels.get(folder) ?? folder,
+      folder,
+      updatedAt: stat.mtime.toISOString(),
+    });
+  }
+  improved.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return [...base, ...improved];
+}
+
+export async function resumeText(id: string): Promise<string> {
+  const { stdout } = await run("pdftotext", ["-layout", await resumePath(id), "-"]);
   return stdout;
 }
 

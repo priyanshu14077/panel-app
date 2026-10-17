@@ -56,8 +56,10 @@ function resumeLines(doc: ResumeDoc): string[] {
 
 // Everything the resume is allowed to draw on.
 async function sourcesFor(run: Run): Promise<string> {
+  // The original resume, never an improved PDF: anything an earlier rebuild
+  // invented must not become its own evidence.
   const [original, profile, knowledge] = await Promise.all([
-    resumeText(run.resumeFile).catch(() => ""),
+    resumeText(run.originResume ?? run.resumeFile).catch(() => ""),
     readProfile(),
     fs.readFile(path.join(KNOWLEDGE_DIR, "knowledge.md"), "utf8").catch(() => ""),
   ]);
@@ -210,7 +212,7 @@ export async function runJudge(run: Run): Promise<JudgeResult> {
   // The same shortlisted knowledge the rebuild saw: anything the resume
   // claims must be in it, and it is a quarter the size of the full base.
   const [original, profile, knowledge] = await Promise.all([
-    resumeText(run.resumeFile).catch(() => ""),
+    resumeText(run.originResume ?? run.resumeFile).catch(() => ""),
     readProfile(),
     loadKnowledge().then((k) => knowledgeDigest(k, run.shortlist)),
   ]);
