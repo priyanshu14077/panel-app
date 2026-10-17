@@ -15,7 +15,7 @@ It never invents a fact. A resume line that needs something it doesn't know is h
 ## Contents
 
 - [Features](#features)
-- [How a run works](#how-a-run-works)
+- [Architecture](#architecture)
 - [Requirements](#requirements)
 - [Setup](#setup)
 - [Your data folder](#your-data-folder)
@@ -71,27 +71,160 @@ It never invents a fact. A resume line that needs something it doesn't know is h
 
 ---
 
-## How a run works
+## Architecture
 
-```
-job link ──► import (schema.org JobPosting, YC founders)
-                │
-                ├──► job details (Haiku) ─────────────────────────┐
-                ├──► repo shortlist: 12 most relevant (Haiku) ────┤
-                └──► 7 reviewers in parallel (Haiku) ──► findings │
-                                                         │        │
-                          resume + profile + shortlisted repos ◄──┘
-                                                         │
-                         ┌───────────────────────────────┴──────────┐
-                  rebuild (Sonnet)                          project ideas (Sonnet)
-                         │
-           re-screen (Haiku) + LaTeX ──► tectonic ──► one-page PDF (trimmed in code)
-                         │
-         application email if the posting asks for one, optional company research
-         and outreach sequence ──► card on the Board in "To apply"
+### System overview
+
+The app is a Next.js server that sits between your browser, Anthropic's API, a few local command-line tools and a data folder on your disk. Long jobs stream their progress to the browser as newline-delimited JSON.
+
+```mermaid
+flowchart LR
+    subgraph UI["Browser"]
+        WS["Workspace<br/>panel · studio · Q&A · outreach"]
+        BD["Board"]
+        EV["Evals"]
+        US["Usage & cost"]
+    end
+
+    API["Route handlers · /api/*<br/>long jobs stream NDJSON events"]
+
+    subgraph CORE["Server modules · src/lib"]
+        PL["pipeline.ts<br/>panel · rebuild · follow-ups · autopilot"]
+        KB["knowledge/<br/>repo cards · shortlist"]
+        EVL["evals.ts<br/>checks · judge"]
+        TEX["latex.ts · compile.ts<br/>JSON → LaTeX → PDF"]
+    end
+
+    subgraph OUT["Outside the server"]
+        CL["Anthropic API<br/>Haiku · Sonnet · Opus · web search"]
+        NET["GitHub · job boards · YC<br/>portfolio site"]
+        BIN["tectonic · pdftotext · pdfinfo<br/>gh · headless Chrome"]
+        DATA[("Data folder<br/>profile · resumes · knowledge<br/>runs · PDFs · usage ledger")]
+    end
+
+    UI --> API --> CORE
+    CORE --> CL
+    CORE --> NET
+    CORE --> BIN
+    CORE <--> DATA
 ```
 
-The rebuild comes back as structured JSON, not free text. Each line that depends on an unanswered question carries a `[[needs:question-id]]` marker, and the renderer leaves those lines out of the PDF. The model never writes LaTeX: code renders it, escapes it and trims the lowest-ranked lines until `pdfinfo` reports one page.
+### One run, from a job link
+
+`/api/autopilot` chains everything. The job details, the repo shortlist and the seven reviewers start together, so the cheap steps add no wait.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor You
+    participant App as Next.js server
+    participant H as Claude Haiku 5.5
+    participant S as Claude Sonnet 5.5
+    participant T as tectonic + poppler
+
+    You->>App: paste a job link
+    App->>App: import the posting (schema.org JobPosting, YC founders)
+    par runs alongside the panel
+        App->>H: extract job details and fit risks
+        App->>H: shortlist the 12 most relevant repos
+    and the panel
+        App->>H: 7 reviewers, each alone
+        H-->>You: each verdict streams in as it lands
+    end
+    App->>H: merge findings, worst first
+    par
+        App->>S: rebuild the resume (JSON, not LaTeX)
+        App->>S: suggest projects that close the gaps
+    end
+    App->>H: re-screen the rebuilt resume
+    App->>T: render, compile, check and trim to one page
+    T-->>You: one-page PDF
+    opt the posting asks for an email
+        App->>S: draft the application email
+    end
+    opt you ticked the boxes
+        App->>S: research the company on the web
+        App->>S: draft the outreach sequence
+    end
+    App-->>You: card on the Board in "To apply"
+```
+
+### How a resume line stays honest
+
+The rebuild returns structured JSON. A line that depends on something you haven't said carries a `[[needs:question-id]]` marker. The renderer leaves it out of the PDF and asks you instead. The model never writes LaTeX: code escapes and renders it, then trims the lowest-ranked lines until `pdfinfo` reports one page.
+
+```mermaid
+flowchart TD
+    SRC["Sources<br/>base resume · profile.md<br/>shortlisted repos · portfolio"] --> RB["Rebuild<br/>structured JSON"]
+    RB --> Q{"Does the line need<br/>a fact you haven't given?"}
+    Q -- no --> KEEP["Line goes to the PDF"]
+    Q -- yes --> HOLD["Marked [[needs:id]]<br/>held back"]
+    HOLD --> ASK["Open question for you"]
+    ASK -- "you answer" --> PROF["Saved to profile.md"]
+    PROF --> REV["Line rewritten with your answer"] --> KEEP
+    ASK -- "you answer 'none'" --> DROP["Line deleted<br/>skill never claimed again"]
+    KEEP --> TEX["Escape and render LaTeX"] --> PDF{"pdfinfo:<br/>one page?"}
+    PDF -- no --> TRIM["Drop the lowest-ranked line"] --> TEX
+    PDF -- yes --> OUT["Resume PDF"]
+    OUT --> EVAL["Evals: numbers, skills and links<br/>traced to sources · optional judge"]
+```
+
+### Which model does what
+
+Each call names the kind of work it needs, and `MODEL_PROFILE` maps that to a model. Web search needs Sonnet or Opus, so research never runs on Haiku.
+
+```mermaid
+flowchart LR
+    subgraph EC["economy · about $0.02 a run"]
+        E1["fast + writer<br/>→ Claude Haiku 5.5"]
+        E2["research<br/>→ Claude Sonnet 5.5"]
+    end
+    subgraph BA["balanced · default · about $0.20 a run"]
+        B1["fast<br/>→ Claude Haiku 5.5"]
+        B2["writer + research<br/>→ Claude Sonnet 5.5"]
+    end
+    subgraph QU["quality · about $1.00 a run"]
+        Q1["fast + writer + research<br/>→ Claude Opus 5.5"]
+    end
+    EC ~~~ BA ~~~ QU
+```
+
+| Tier | Calls | Haiku 5.5 | Sonnet 5.5 | Opus 5.5 |
+|---|---|---|---|---|
+| **fast** | reviewers, re-screen, findings, job details, repo shortlist, repo cards | economy, balanced | | quality |
+| **writer** | rebuild, project ideas, chat, email, outreach, judge | economy | balanced | quality |
+| **research** | company web search | | economy, balanced | quality |
+
+List prices per million input / output tokens: Haiku 5.5 $0.10 / $0.50, Sonnet 5.5 $2 / $10, Opus 5.5 $4 / $20.
+
+
+A Haiku refusal is retried once on Sonnet in code. Sonnet and Opus retry refusals server-side with `fallbacks: "default"`.
+
+### An application on the Board
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> ToApply: run finishes
+    ToApply --> Applied: you apply
+    Applied --> InConversation: someone replies
+    InConversation --> Interviewing
+    Interviewing --> Offer
+    Applied --> Closed
+    InConversation --> Closed
+    Interviewing --> Closed
+    Offer --> Closed
+    Closed --> [*]
+
+    ToApply: To apply
+    ToApply: due - email the application if the posting gives an address
+    Applied: Applied
+    Applied: due - follow up after 5 days
+    InConversation: In conversation
+    InConversation: due - each outreach step on its day
+    Interviewing: Interviewing
+    Interviewing: due - thank-you note
+```
 
 ---
 
