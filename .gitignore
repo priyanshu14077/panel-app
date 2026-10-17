@@ -44,3 +44,6 @@ next-env.d.ts
 
 # compiled resume output from local test scripts
 /fit-check/
+
+# /brag working files: raw captures contain personal data; publish only the cleaned copies in docs/media/
+/brag-output/
