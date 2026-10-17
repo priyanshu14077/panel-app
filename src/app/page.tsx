@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AddedProject, ChatTurn, DraftedEmail, DraftedSequence, Review, Run, RunEvent, Screen } from "@/lib/pipeline";
 import type { JobDetails, ProjectIdea, Synthesis } from "@/lib/schemas";
+import type { ResumeOption } from "@/lib/files";
 import { readNdjson } from "@/lib/read-ndjson";
 import { KnowledgePanel } from "./knowledge-panel";
 
 interface Sources {
-  resumes: string[];
+  resumes: ResumeOption[];
   jobs: { folder: string; text: string }[];
   hasProfile: boolean;
   hasKey: boolean;
@@ -51,8 +52,12 @@ export default function Home() {
   const [withResearch, setWithResearch] = useState(false);
   const [withOutreach, setWithOutreach] = useState(false);
 
+  // Runs and resumes change together: a finished run adds an improved PDF.
   const refreshRuns = useCallback(() => {
     fetch("/api/runs").then((r) => r.json()).then(setRuns);
+    fetch("/api/sources")
+      .then((r) => r.json())
+      .then((s: Sources) => setSources(s));
   }, []);
 
   useEffect(() => {
@@ -60,7 +65,7 @@ export default function Home() {
       .then((r) => r.json())
       .then((s: Sources) => {
         setSources(s);
-        setResumeFile((f) => f || s.resumes[0] || "");
+        setResumeFile((f) => f || s.resumes[0]?.id || "");
       });
     refreshRuns();
     // Deep link from the board: /?run=<id>&tab=qa
@@ -213,10 +218,42 @@ export default function Home() {
       <div className="grid gap-6 lg:grid-cols-[22rem_1fr]">
         <aside className="space-y-6">
           <Card title="New run">
-            <label className="block text-xs font-medium text-muted">Base resume</label>
+            <div className="flex items-baseline justify-between">
+              <label className="block text-xs font-medium text-muted">Resume to review</label>
+              {resumeFile && (
+                <a className="text-xs text-accent" href={`/api/resumes/pdf?id=${encodeURIComponent(resumeFile)}`} target="_blank" rel="noreferrer">
+                  Preview
+                </a>
+              )}
+            </div>
             <select className={`mt-1 ${input}`} value={resumeFile} onChange={(e) => setResumeFile(e.target.value)}>
-              {sources?.resumes.map((r) => <option key={r}>{r}</option>)}
+              <optgroup label="Your resumes">
+                {sources?.resumes
+                  .filter((r) => r.group === "base")
+                  .map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label}
+                    </option>
+                  ))}
+              </optgroup>
+              {!!sources?.resumes.some((r) => r.group === "improved") && (
+                <optgroup label="Improved by the panel (newest first)">
+                  {sources.resumes
+                    .filter((r) => r.group === "improved")
+                    .map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.label} (improved {new Date(r.updatedAt).toLocaleDateString()})
+                      </option>
+                    ))}
+                </optgroup>
+              )}
             </select>
+            {resumeFile.startsWith("improved:") && (
+              <p className="mt-1 text-xs text-muted">
+                Reviewing an improved PDF. Its rebuild replaces it, and the old version is kept in that folder&rsquo;s <code>archive/</code>. Grounding
+                evals still check against your original resume.
+              </p>
+            )}
             {!!sources?.jobs.length && (
               <>
                 <label className="mt-4 block text-xs font-medium text-muted">Saved job posting</label>
