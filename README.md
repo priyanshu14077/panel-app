@@ -39,6 +39,7 @@ It never invents a fact. A resume line that needs something it doesn't know is h
 - **The panel**: seven reviewers run in parallel and stream in as each finishes. None sees another's notes.
 - **Rebuilt resume**: mistakes listed worst first, the resume rewritten in the posting's vocabulary, the 2-4 best-fitting projects picked from your GitHub, then compiled to an ATS-parsable one-page PDF with [Jake's Resume](https://github.com/jakegut/resume). The automated screen re-runs on the new version so you see before and after.
 - **Open questions**: facts the rebuild needs from you. Answers are saved to your profile and reused on every later run.
+- **Review an improved PDF**: the resume picker lists your own PDFs and every PDF the pipeline compiled (newest first, labelled with the job), with a Preview link. Run the panel on an improved version to check the rebuild holds up. For the same posting, the next rebuild goes back into that PDF's folder and the previous version moves to `archive/`, so nothing is overwritten. Grounding evals always check against the original resume the chain started from.
 
 **Project studio**
 
@@ -402,6 +403,7 @@ Structured-output schemas compile into a grammar on Anthropic's side, and a larg
 | `npx tsx scripts/render-fixture.mts` | no | renders a fixture resume through LaTeX and the PDF checks |
 | `npx tsx scripts/refit-run.mts ../.hiring-panel/<run>/run.json` | no | recompiles a saved run's PDF with the current renderer |
 | `npx tsx scripts/collect-check.mts [portfolio-url]` | no | exercises the GitHub and portfolio collectors |
+| `JOB_HUNT_ROOT=<scratch> npx tsx scripts/archive-check.mts <run.json>` | no | compiles a run's resume twice into one folder and shows the archived copy |
 | `npx tsx scripts/schema-check.mts` | yes (export the key first) | confirms every schema compiles on the tier it runs on |
 
 ---
