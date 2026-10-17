@@ -10,10 +10,19 @@ A local job-application workbench built on Claude. Paste a job link and it:
 
 It never invents a fact. A resume line that needs something it doesn't know is held back from the PDF and turned into a question for you.
 
+## Demo
+
+[![Hiring Panel launch film: seven reviewers say no, the screen flips from REJECT to PASS, the outreach and the board. Click to play.](docs/media/hiring-panel-demo-poster.jpg)](docs/media/hiring-panel-demo.mp4)
+
+*A 22-second launch film (click the image to play): the panel rejects the resume, the rebuild turns the automated screen from REJECT to PASS, then the outreach sequence and the board. Made with [Hyperframes](https://hyperframes.heygen.com) from the app's real screens; contact details are blurred.*
+
+![The Hiring Panel workspace: the seven reviewer verdicts, the before-and-after automated screen, and the mistakes list.](docs/media/workspace-screenshot.png)
+
 ---
 
 ## Contents
 
+- [Demo](#demo)
 - [Features](#features)
 - [Architecture](#architecture)
 - [Requirements](#requirements)
@@ -419,3 +428,5 @@ The app is built to run locally. It reads and writes your data folder, shells ou
 - Resume layout: [Jake's Resume](https://github.com/jakegut/resume) by Jake Gutierrez, MIT (`templates/LICENSE-jake-resume`).
 - The seven-reviewer panel follows the [hiring-panel skill](https://github.com/alexyc9381/hiring-panel-skill) by Alex Chen, MIT.
 - Built with [Next.js](https://nextjs.org) and the [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript).
+- Demo video music: Happy Beats & Business Moves Vol. 11 by Sascha Ende — ende.app License: CC BY 4.0 (ende.app/standard-license)
+- Demo video type: [Instrument Serif](https://github.com/Instrument/instrument-serif) and [Geist](https://github.com/vercel/geist-font), both SIL Open Font License.
