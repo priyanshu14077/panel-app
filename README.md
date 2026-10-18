@@ -14,15 +14,66 @@ It never invents a fact. A resume line that needs something it doesn't know is h
 
 [![Hiring Panel launch film: seven reviewers say no, the screen flips from REJECT to PASS, the outreach and the board. Click to play.](docs/media/hiring-panel-demo-poster.jpg)](docs/media/hiring-panel-demo.mp4)
 
-*A 22-second launch film (click the image to play): the panel rejects the resume, the rebuild turns the automated screen from REJECT to PASS, then the outreach sequence and the board. Made with [Hyperframes](https://hyperframes.heygen.com) from the app's real screens; contact details are blurred.*
+*A silent 22-second launch film (click the image to play): the panel rejects the resume, the rebuild turns the automated screen from REJECT to PASS, then the outreach sequence and the board. Made with [Hyperframes](https://hyperframes.heygen.com) in the app's dark theme from its real screens; contact details are blurred.*
 
-![The Hiring Panel workspace: the seven reviewer verdicts, the before-and-after automated screen, and the mistakes list.](docs/media/workspace-screenshot.png)
+## Walkthrough
+
+One job, from posting to tracked application. Screenshots use demo data: company, people and contact details are placeholders, and every answer, draft and verdict shown is real model output.
+
+**1. Start a run.** Pick a resume (yours, or one the panel already improved), paste a job link or posting, and choose whether to research the company and draft outreach.
+
+![New run: resume picker, job link import, job posting box and the Run everything button.](docs/media/screenshots/01-new-run.png)
+
+**2. Seven reviewers judge it alone.** Each verdict streams in as it lands. The automated screen re-runs on the rebuilt resume, so you see before and after.
+
+![The panel: seven reviewer cards with their verdicts, and the automated screen going from REJECT to PASS.](docs/media/screenshots/02-panel-verdicts.png)
+
+**3. What is wrong, worst first.** Every mistake quotes the line it is about and names the reviewers who flagged it.
+
+![The merged mistakes list, each with the quoted line, why it gets rejected, and who flagged it.](docs/media/screenshots/03-what-is-wrong.png)
+
+**4. Projects that close the gaps.** Short builds aimed at the posting, often extending a repo you already have.
+
+![Project ideas with scope, the gap each closes and the repo it extends.](docs/media/screenshots/04-projects-to-build.png)
+
+**5. Questions instead of invented facts.** Lines that need something you haven't said are held back from the PDF until you answer.
+
+![Open questions, each saying which line it unlocks.](docs/media/screenshots/05-open-questions.png)
+
+**6. Project studio.** Web research on the company, then project ideas that mirror its product and customers.
+
+![Company-tailored project ideas built from web research on the company.](docs/media/screenshots/06-project-studio.png)
+
+**7. Add what you built.** Give the real details and the resume and PDF are rebuilt with it.
+
+![The form for adding a built or in-progress project.](docs/media/screenshots/07-add-a-project.png)
+
+**8. Application Q&A.** Form answers in your voice, from your real work, inside the word limit.
+
+![A form question answered in 119 words against a 120-word limit.](docs/media/screenshots/08-application-qa.png)
+
+**9. Outreach.** A 10-day LinkedIn and email sequence to a founder, engineer or recruiter, with LinkedIn's character limits enforced.
+
+![An outreach sequence: day 0 connection note at 182/200 characters, day 0 email, day 2 LinkedIn message.](docs/media/screenshots/09-outreach-sequence.png)
+
+**10. Track it on the board.** Each card shows the screen verdict, failed evals, fit risk, cost and what is due today.
+
+![The Kanban board with cards in To apply, Applied, In conversation and Interviewing, each with what is due.](docs/media/screenshots/10-board.png)
+
+**11. Evals.** Pass rates across runs for grounding, one-page, placeholder and writing checks.
+
+![The evals page: suite pass rates and per-run results.](docs/media/screenshots/11-evals.png)
+
+**12. Usage and cost.** Every model call priced, by feature and by run.
+
+![Usage and cost: total spend, calls, tokens and web searches, then cost by feature.](docs/media/screenshots/12-usage-and-cost.png)
 
 ---
 
 ## Contents
 
 - [Demo](#demo)
+- [Walkthrough](#walkthrough)
 - [Features](#features)
 - [Architecture](#architecture)
 - [Requirements](#requirements)
@@ -428,5 +479,4 @@ The app is built to run locally. It reads and writes your data folder, shells ou
 - Resume layout: [Jake's Resume](https://github.com/jakegut/resume) by Jake Gutierrez, MIT (`templates/LICENSE-jake-resume`).
 - The seven-reviewer panel follows the [hiring-panel skill](https://github.com/alexyc9381/hiring-panel-skill) by Alex Chen, MIT.
 - Built with [Next.js](https://nextjs.org) and the [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript).
-- Demo video music: Happy Beats & Business Moves Vol. 11 by Sascha Ende — ende.app License: CC BY 4.0 (ende.app/standard-license)
 - Demo video type: [Instrument Serif](https://github.com/Instrument/instrument-serif) and [Geist](https://github.com/vercel/geist-font), both SIL Open Font License.
