@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { UsageRecord } from "@/lib/usage";
+import { Card, Chevron, PageHeader } from "@/app/ui";
 
 interface Totals {
   calls: number;
@@ -36,7 +37,36 @@ const ACTION_LABELS: Record<string, string> = {
   outreach: "Outreach sequences",
   knowledge: "Knowledge base",
   eval: "Evals (judge)",
+  shortlist: "Repo shortlist",
+  details: "Job details",
 };
+
+// Which tier each feature runs on, for the cost-by-tier colours.
+type Tier = "fast" | "writer" | "research";
+const TIER_OF: Record<string, Tier> = {
+  review: "fast",
+  findings: "fast",
+  rescreen: "fast",
+  details: "fast",
+  shortlist: "fast",
+  knowledge: "fast",
+  outreach: "writer",
+  rebuild: "writer",
+  ideas: "writer",
+  answers: "writer",
+  "add-project": "writer",
+  "company-ideas": "writer",
+  chat: "writer",
+  email: "writer",
+  eval: "writer",
+  "company-research": "research",
+};
+const TIERS: { id: Tier; label: string; series: string }[] = [
+  { id: "writer", label: "Writing", series: "series-1" },
+  { id: "research", label: "Web research", series: "series-2" },
+  { id: "fast", label: "Reading and grading", series: "series-3" },
+];
+const tierOf = (action: string): Tier => TIER_OF[action] ?? "writer";
 
 export default function UsagePage() {
   const [u, setU] = useState<Usage | null>(null);
@@ -44,112 +74,147 @@ export default function UsagePage() {
     fetch("/api/usage").then((r) => r.json()).then(setU);
   }, []);
 
+  const byTier = TIERS.map((t) => ({ ...t, cost: u?.byAction.filter((a) => tierOf(a.action) === t.id).reduce((s, a) => s + a.cost, 0) ?? 0 }));
+  const top = Math.max(...(u?.byAction.map((a) => a.cost) ?? [0]), 0.0001);
+  const cached = u?.byRun.reduce((s, r) => s + r.calls_detail.reduce((t, c) => t + c.cacheReadTokens, 0), 0) ?? 0;
+
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Usage &amp; cost</h1>
-      <p className="mt-1 max-w-3xl text-sm text-muted">
+    <main className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-4 py-6 sm:px-8">
+      <PageHeader title="Usage & cost">
         Every Claude call the app makes, priced at list rates per million input / output tokens: Haiku 5.5 $0.10 / $0.50, Sonnet 5.5 $2 / $10, Opus
-        5.5 $4 / $20; web search $10 per 1,000. Thinking tokens bill as output. Calls made before metering was added are not counted.
-      </p>
+        5.5 $4 / $20; web search $10 per 1,000. Thinking tokens bill as output.
+      </PageHeader>
       {u && (
-        <p className="mt-3 text-sm">
-          Model profile: <span className="font-medium">{u.profile}</span>
+        <p className="text-sm">
+          Model profile <span className="badge badge--primary">{u.profile}</span>
           <span className="text-muted">
             {" "}
-            · reading and grading on {u.models.fast} · writing on {u.models.writer} · web research on {u.models.research}. Change it with{" "}
-            <code>MODEL_PROFILE=economy|balanced|quality</code> in <code>.env.local</code>.
+            reads and grades on <span className="mono">{u.models.fast}</span>, writes on <span className="mono">{u.models.writer}</span>, researches
+            on <span className="mono">{u.models.research}</span>. Change it with <code>MODEL_PROFILE</code> in <code>.env.local</code>.
           </span>
         </p>
       )}
-      {!u && <p className="mt-6 text-sm text-muted">Loading…</p>}
+      {!u && <p className="streaming text-muted">Loading usage…</p>}
       {u && (
         <>
-          <div className="mt-6 grid gap-3 sm:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              ["Total spend", usd(u.total.cost)],
-              ["Claude calls", String(u.total.calls)],
-              ["Tokens in / out", `${k(u.total.inputTokens)} / ${k(u.total.outputTokens)}`],
-              ["Web searches", String(u.total.webSearches)],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-lg border border-border bg-surface p-4">
-                <p className="text-xs text-muted">{label}</p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+              ["Total spend", usd(u.total.cost), true],
+              ["Claude calls", String(u.total.calls), false],
+              ["Tokens in / out", `${k(u.total.inputTokens)} / ${k(u.total.outputTokens)}`, false],
+              ["Web searches", String(u.total.webSearches), false],
+            ].map(([label, value, cost]) => (
+              <div key={label as string} className="card p-5">
+                <p className="kpi-label">{label}</p>
+                <p className={`kpi-value mono mt-2 ${cost ? "kpi-value--cost" : ""}`}>{value}</p>
+                {label === "Tokens in / out" && cached > 0 && <p className="mono mt-1 text-xs text-muted">{k(cached)} read from cache</p>}
               </div>
             ))}
           </div>
 
-          <section className="mt-6 rounded-lg border border-border bg-surface p-4">
-            <h2 className="mb-3 text-sm font-semibold">By feature</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm tabular-nums">
-                <thead className="text-left text-xs text-muted">
+          <Card title="Cost by feature">
+            <div className="flex flex-col gap-3">
+              <div className="flex h-3 overflow-hidden rounded-full bg-track" role="img" aria-label="Total spend split by tier">
+                {byTier.map((t) => (
+                  <span key={t.id} className={t.series} style={{ width: `${(t.cost / (u.total.cost || 1)) * 100}%` }} />
+                ))}
+              </div>
+              <ul className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                {byTier.map((t) => (
+                  <li key={t.id} className="flex items-center gap-2">
+                    <span className={`h-2.5 w-2.5 rounded-full ${t.series}`} aria-hidden />
+                    {t.label}
+                    <span className="mono text-muted">{usd(t.cost)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="table-scroll mt-6">
+              <table className="table">
+                <thead>
                   <tr>
-                    <th className="py-1 pr-3 font-medium">Feature</th>
-                    <th className="py-1 pr-3 text-right font-medium">Calls</th>
-                    <th className="py-1 pr-3 text-right font-medium">Tokens in / out</th>
-                    <th className="py-1 pr-3 text-right font-medium">Avg per call</th>
-                    <th className="py-1 text-right font-medium">Cost</th>
+                    <th>Feature</th>
+                    <th className="w-[40%]">Share</th>
+                    <th className="text-right">Calls</th>
+                    <th className="text-right">Tokens in / out</th>
+                    <th className="text-right">Avg per call</th>
+                    <th className="text-right">Cost</th>
                   </tr>
                 </thead>
                 <tbody>
                   {u.byAction.map((a) => (
-                    <tr key={a.action} className="border-t border-border">
-                      <td className="py-1.5 pr-3">{ACTION_LABELS[a.action] ?? a.action}</td>
-                      <td className="py-1.5 pr-3 text-right">{a.calls}</td>
-                      <td className="py-1.5 pr-3 text-right">
+                    <tr key={a.action}>
+                      <td className="font-semibold">{ACTION_LABELS[a.action] ?? a.action}</td>
+                      <td>
+                        <div className="h-2 rounded-full bg-track">
+                          <span
+                            className={`block h-2 rounded-full ${TIERS.find((t) => t.id === tierOf(a.action))!.series}`}
+                            style={{ width: `${Math.max((a.cost / top) * 100, 1)}%` }}
+                          />
+                        </div>
+                      </td>
+                      <td className="mono text-right">{a.calls}</td>
+                      <td className="mono text-right">
                         {k(a.inputTokens)} / {k(a.outputTokens)}
                       </td>
-                      <td className="py-1.5 pr-3 text-right">{usd(a.cost / a.calls)}</td>
-                      <td className="py-1.5 text-right font-medium">{usd(a.cost)}</td>
+                      <td className="mono text-right">{usd(a.cost / a.calls)}</td>
+                      <td className="mono text-right font-semibold">{usd(a.cost)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </section>
+          </Card>
 
-          <section className="mt-6 space-y-3">
-            <h2 className="text-sm font-semibold">By run, every call</h2>
-            {u.byRun.map((r) => (
-              <details key={r.runId || "other"} className="rounded-lg border border-border bg-surface p-4">
-                <summary className="flex cursor-pointer flex-wrap items-center gap-3 text-sm">
-                  <span className="font-medium">{r.label}</span>
-                  <span className="text-xs text-muted">{r.calls} calls</span>
-                  <span className="ml-auto font-medium tabular-nums">{usd(r.cost)}</span>
-                </summary>
-                <div className="mt-3 overflow-x-auto">
-                  <table className="w-full text-xs tabular-nums">
-                    <thead className="text-left text-muted">
-                      <tr>
-                        <th className="py-1 pr-3 font-medium">Time</th>
-                        <th className="py-1 pr-3 font-medium">Action</th>
-                        <th className="py-1 pr-3 font-medium">Model</th>
-                        <th className="py-1 pr-3 text-right font-medium">In</th>
-                        <th className="py-1 pr-3 text-right font-medium">Cached</th>
-                        <th className="py-1 pr-3 text-right font-medium">Out</th>
-                        <th className="py-1 pr-3 text-right font-medium">Searches</th>
-                        <th className="py-1 text-right font-medium">Cost</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {r.calls_detail.map((c, i) => (
-                        <tr key={i} className="border-t border-border">
-                          <td className="py-1 pr-3">{new Date(c.at).toLocaleTimeString()}</td>
-                          <td className="py-1 pr-3">{c.action}</td>
-                          <td className="py-1 pr-3 text-muted">{c.model}</td>
-                          <td className="py-1 pr-3 text-right">{k(c.inputTokens + c.cacheWriteTokens)}</td>
-                          <td className="py-1 pr-3 text-right">{k(c.cacheReadTokens)}</td>
-                          <td className="py-1 pr-3 text-right">{k(c.outputTokens)}</td>
-                          <td className="py-1 pr-3 text-right">{c.webSearches || ""}</td>
-                          <td className="py-1 text-right">{usd(c.cost)}</td>
+          <section className="flex flex-col gap-4">
+            <h2>By run</h2>
+            {u.byRun.length === 0 && <p className="text-muted">No metered calls yet. Start a run from the Workspace.</p>}
+            <div className="card overflow-hidden p-0">
+              {u.byRun.map((r) => (
+                <details key={r.runId || "other"} className="border-b border-line-subtle last:border-b-0">
+                  <summary className="flex min-h-14 flex-wrap items-center gap-3 px-5 py-3 hover:bg-surface-hover">
+                    <Chevron />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold">{r.label}</span>
+                      <span className="mono block text-xs text-muted">
+                        {r.calls} calls · {new Date(r.lastAt).toLocaleString()}
+                      </span>
+                    </span>
+                    <span className="mono font-semibold text-[var(--cost-total)]">{usd(r.cost)}</span>
+                  </summary>
+                  <div className="table-scroll px-5 pb-5">
+                    <table className="table mono text-xs">
+                      <thead>
+                        <tr>
+                          <th>Time</th>
+                          <th>Action</th>
+                          <th>Model</th>
+                          <th className="text-right">In</th>
+                          <th className="text-right">Cached</th>
+                          <th className="text-right">Out</th>
+                          <th className="text-right">Searches</th>
+                          <th className="text-right">Cost</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </details>
-            ))}
-            {u.byRun.length === 0 && <p className="text-sm text-muted">No metered calls yet.</p>}
+                      </thead>
+                      <tbody>
+                        {r.calls_detail.map((c, i) => (
+                          <tr key={i}>
+                            <td>{new Date(c.at).toLocaleTimeString()}</td>
+                            <td>{c.action}</td>
+                            <td className="text-muted">{c.model}</td>
+                            <td className="text-right">{k(c.inputTokens + c.cacheWriteTokens)}</td>
+                            <td className="text-right">{c.cacheReadTokens ? k(c.cacheReadTokens) : ""}</td>
+                            <td className="text-right">{k(c.outputTokens)}</td>
+                            <td className="text-right">{c.webSearches || ""}</td>
+                            <td className="text-right">{usd(c.cost)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              ))}
+            </div>
           </section>
         </>
       )}
