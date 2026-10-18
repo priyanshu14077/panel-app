@@ -311,7 +311,7 @@ git clone <this repo> panel-app
 cd panel-app
 npm install
 cp .env.local.example .env.local   # paste your API key
-npm run dev                         # http://localhost:3000
+npm run dev                         # http://localhost:3000, the app is at /workspace
 ```
 
 `.env.local` is git-ignored. Never commit it.
@@ -432,13 +432,18 @@ Plus the optional **grounding judge**: Claude reads every resume line against yo
 ```
 src/
 ├── app/
-│   ├── page.tsx               workspace: new run, panel, studio, Q&A, outreach tabs
-│   ├── board/                 Kanban board and write-ups drawer
-│   ├── evals/                 eval results and the grounding judge
-│   ├── usage/                 cost ledger
-│   ├── nav.tsx, layout.tsx    navbar
+│   ├── page.tsx               landing page at /, with the liquid particle hero
+│   ├── (app)/                 pages that share the left rail
+│   │   ├── workspace/         new run, panel, studio, Q&A, outreach tabs
+│   │   ├── board/             Kanban board and write-ups drawer
+│   │   ├── evals/             eval results and the grounding judge
+│   │   └── usage/             cost ledger
+│   ├── nav.tsx                left rail: tabs and recent runs
+│   ├── tokens.css, ui.tsx     design tokens and shared UI pieces (see DESIGN.md)
 │   ├── knowledge-panel.tsx    build and curate the knowledge base
 │   └── api/                   route handlers; long jobs stream NDJSON events
+├── components/ui/
+│   └── liquid-sculpture-hero.tsx   WebGL2 particle hero for the landing page
 ├── lib/
 │   ├── claude.ts              model tiers, fallbacks, structured output, web research, chat
 │   ├── pipeline.ts            the panel, rebuild, PDF, follow-up actions, autopilot, board
@@ -481,4 +486,6 @@ The app is built to run locally. It reads and writes your data folder, shells ou
 - Resume layout: [Jake's Resume](https://github.com/jakegut/resume) by Jake Gutierrez, MIT (`templates/LICENSE-jake-resume`).
 - The seven-reviewer panel follows the [hiring-panel skill](https://github.com/alexyc9381/hiring-panel-skill) by Alex Chen, MIT.
 - Built with [Next.js](https://nextjs.org) and the [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript).
+- Landing hero: the liquid sculpture hero by [Guglielmo Giannattasio](https://guglielmogiannattasio.it).
+- App type: [Bricolage Grotesque](https://github.com/ateliertriay/bricolage) and [Manrope](https://github.com/sharanda/manrope), both SIL Open Font License.
 - Demo video type: [Instrument Serif](https://github.com/Instrument/instrument-serif) and [Geist](https://github.com/vercel/geist-font), both SIL Open Font License.
