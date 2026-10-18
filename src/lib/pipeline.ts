@@ -521,7 +521,8 @@ export async function draftEmail(id: string, kind: keyof typeof EMAIL_KINDS, not
   const email = await askStructured({
     tier: "writer",
     system: EMAIL_SYSTEM,
-    prompt: `${contextBlock(run, ctx, improvedText(run, ctx))}\n\n<email_type>${EMAIL_KINDS[kind]}</email_type>\n<candidate_notes>${notes || "(none)"}</candidate_notes>`,
+    context: contextBlock(run, ctx, improvedText(run, ctx)),
+    prompt: `<email_type>${EMAIL_KINDS[kind]}</email_type>\n<candidate_notes>${notes || "(none)"}</candidate_notes>`,
     schema: Email,
     effort: "medium",
     tag: { runId: run.id, action: `email:${kind}` },
@@ -563,7 +564,8 @@ export async function draftOutreach(id: string, target: keyof typeof OUTREACH_TA
   const sequence = await askStructured({
     tier: "writer",
     system: OUTREACH_SYSTEM,
-    prompt: `${contextBlock(run, ctx, improvedText(run, ctx))}\n\n<target>${OUTREACH_TARGETS[target]}</target>\n<candidate_notes>${notes || "(none)"}</candidate_notes>`,
+    context: contextBlock(run, ctx, improvedText(run, ctx)),
+    prompt: `<target>${OUTREACH_TARGETS[target]}</target>\n<candidate_notes>${notes || "(none)"}</candidate_notes>`,
     schema: Sequence,
     effort: "medium",
     tag: { runId: run.id, action: `outreach:${target}` },
