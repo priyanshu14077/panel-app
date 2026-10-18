@@ -89,7 +89,8 @@ export default function BoardPage() {
                   if (dragging) move(dragging, stage);
                   setDragging(null);
                 }}
-                className={`column column--${slug(stage)} flex min-h-64 flex-col ${dragging ? "outline-2 outline-dashed outline-[var(--color-primary)]" : ""}`}
+                data-drop={dragging ? "" : undefined}
+                className={`column column--${slug(stage)} flex min-h-64 flex-col`}
               >
                 <h2 className="column__head font-body text-md">
                   {stage}
@@ -97,9 +98,10 @@ export default function BoardPage() {
                 </h2>
                 <div className="flex flex-col gap-3">
                   {column.length === 0 && <p className="px-2 text-sm text-muted">Drop a card here.</p>}
-                  {column.map((c) => (
+                  {column.map((c, i) => (
                     <article
                       key={c.id}
+                      style={{ "--i": i } as React.CSSProperties}
                       draggable
                       onDragStart={() => setDragging(c.id)}
                       onDragEnd={() => setDragging(null)}
@@ -218,12 +220,12 @@ function Drawer({ card, onClose, onPatch, onChanged }: { card: Card; onClose: ()
   const d = card.details;
 
   return (
-    <div className="fixed inset-0 z-20 flex justify-end bg-scrim" onClick={onClose}>
+    <div className="hp-scrim fixed inset-0 z-20 flex justify-end bg-scrim" onClick={onClose}>
       <aside
         role="dialog"
         aria-modal="true"
         aria-label={`${card.company} write-ups`}
-        className="card flex h-full w-full max-w-2xl flex-col gap-6 overflow-y-auto rounded-none border-y-0 border-r-0"
+        className="card hp-drawer flex h-full w-full max-w-2xl flex-col gap-6 overflow-y-auto rounded-none border-y-0 border-r-0"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
