@@ -1,11 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { AddedProject, ChatTurn, DraftedEmail, DraftedSequence, Review, Run, RunEvent, Screen } from "@/lib/pipeline";
 import type { JobDetails, ProjectIdea, Synthesis } from "@/lib/schemas";
 import type { ResumeOption } from "@/lib/files";
 import { readNdjson } from "@/lib/read-ndjson";
-import { KnowledgePanel } from "./knowledge-panel";
+import { KnowledgePanel } from "@/app/knowledge-panel";
+import { RUNS_CHANGED } from "@/app/nav";
+import { Card, Chevron, CopyButton, LimitMeter, Notice, PageHeader, Verdict, WithGaps, isWin, wordCount } from "@/app/ui";
 
 interface Sources {
   resumes: ResumeOption[];
@@ -13,125 +16,129 @@ interface Sources {
   hasProfile: boolean;
   hasKey: boolean;
 }
-type RunSummary = Pick<Run, "id" | "createdAt" | "synthesis" | "pdf">;
 type Tab = "panel" | "studio" | "qa" | "email";
 
-const REVIEWER_ORDER = ["Automated screen", "Hiring manager (interview call)", "Hiring manager (day one)", "Another applicant", "CEO", "Recruiter (30 seconds)", "Teammate"];
+const TABS: [Tab, string][] = [
+  ["panel", "Panel"],
+  ["studio", "Project studio"],
+  ["qa", "Application Q&A"],
+  ["email", "Outreach & email"],
+];
 const NEEDS = /\[\[needs:([a-z0-9-]+)\]\]/;
 
-function verdictTone(v: string): string {
-  if (["PASS", "HIRE", "INTERVIEW"].includes(v)) return "text-good border-good";
-  if (v === "MAYBE") return "text-warn border-warn";
-  return "text-bad border-bad";
+const post = (url: string, body?: unknown) =>
+  fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
+
+// useSearchParams needs a Suspense boundary to prerender.
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <Workspace />
+    </Suspense>
+  );
 }
 
-// The screen's PASS is good news; a reader's PASS means "no". Label them apart.
-function verdictLabel(review: Pick<Review, "id" | "verdict">): { text: string; tone: string } {
-  if (review.id !== "screen" && review.verdict === "PASS") return { text: "PASS (no)", tone: verdictTone("NO") };
-  return { text: review.verdict, tone: verdictTone(review.verdict) };
-}
+function Workspace() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const linked = params.get("run");
+  const linkedTab = params.get("tab");
 
-const input = "w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm";
-const primary = "rounded-md bg-accent px-3 py-2 text-sm font-medium text-background disabled:opacity-50";
-const secondary = "rounded-md border border-border px-2 py-1 text-xs font-medium disabled:opacity-50";
-
-export default function Home() {
   const [sources, setSources] = useState<Sources | null>(null);
-  const [runs, setRuns] = useState<RunSummary[]>([]);
-  const [resumeFile, setResumeFile] = useState("");
-  const [jobText, setJobText] = useState("");
   const [run, setRun] = useState<Partial<Run> | null>(null);
   const [tab, setTab] = useState<Tab>("panel");
   const [stage, setStage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [pdfVersion, setPdfVersion] = useState(0);
-  const [jobUrl, setJobUrl] = useState("");
-  const [importing, setImporting] = useState(false);
-  const [imported, setImported] = useState("");
-  const [withResearch, setWithResearch] = useState(false);
-  const [withOutreach, setWithOutreach] = useState(false);
+  // The run a stream is writing to, so opening another run mid-stream is safe.
+  const streamId = useRef<string | null>(null);
+  const shownId = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    shownId.current = run?.id;
+  }, [run?.id]);
 
-  // Runs and resumes change together: a finished run adds an improved PDF.
-  const refreshRuns = useCallback(() => {
-    fetch("/api/runs").then((r) => r.json()).then(setRuns);
+  const refreshSources = useCallback(() => {
     fetch("/api/sources")
       .then((r) => r.json())
       .then((s: Sources) => setSources(s));
   }, []);
-
   useEffect(() => {
-    fetch("/api/sources")
-      .then((r) => r.json())
-      .then((s: Sources) => {
-        setSources(s);
-        setResumeFile((f) => f || s.resumes[0]?.id || "");
-      });
-    refreshRuns();
-    // Deep link from the board: /?run=<id>&tab=qa
-    const q = new URLSearchParams(window.location.search);
-    const linked = q.get("run");
-    if (linked) {
-      fetch(`/api/runs/${linked}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((r) => {
-          if (!r) return;
-          setRun(r);
-          setPdfVersion((v) => v + 1);
-          const tabParam = q.get("tab");
-          if (tabParam === "studio" || tabParam === "qa" || tabParam === "email") setTab(tabParam);
-        });
-    }
-  }, [refreshRuns]);
+    refreshSources();
+  }, [refreshSources]);
 
-  const apply = useCallback((e: RunEvent) => {
-    switch (e.type) {
-      case "started":
-        setRun((r) => ({ ...r, id: e.runId }));
-        break;
-      case "stage":
-        setStage(e.stage);
-        break;
-      case "review":
-        setRun((r) => ({ ...r, reviews: [...(r?.reviews ?? []), e.review] }));
-        break;
-      case "synthesis":
-        setRun((r) => ({ ...r, synthesis: e.synthesis }));
-        break;
-      case "rescreen":
-        setRun((r) => ({ ...r, rescreens: [...(r?.rescreens ?? []), e.screen] }));
-        break;
-      case "pdf":
-        setRun((r) => ({ ...r, pdf: e.pdf }));
+  // A link from the rail or the board: /?run=<id>&tab=qa
+  useEffect(() => {
+    if (!linked || linked === shownId.current) return;
+    fetch(`/api/runs/${linked}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((r: Run | null) => {
+        if (!r) return;
+        setRun(r);
+        setError("");
         setPdfVersion((v) => v + 1);
-        break;
-      case "company":
-        setRun((r) => ({ ...r, companyBrief: e.brief, companyIdeas: e.ideas }));
-        break;
-      case "imported":
-        setImported(`Imported ${e.title}${e.company ? ` at ${e.company}` : ""}. Saved to job descriptions/${e.folder}/.`);
-        break;
-      case "details":
-        setRun((r) => ({ ...r, details: e.details }));
-        break;
-      case "email":
-        setRun((r) => ({ ...r, emails: [...(r?.emails ?? []), e.email] }));
-        break;
-      case "outreach":
-        setRun((r) => ({ ...r, outreach: [...(r?.outreach ?? []), e.sequence] }));
-        break;
-      case "error":
-        setError(e.message);
-        break;
-      case "done":
-        setRun(e.run);
-        setStage("");
-        break;
-    }
+        setTab(linkedTab === "studio" || linkedTab === "qa" || linkedTab === "email" ? linkedTab : "panel");
+      });
+  }, [linked, linkedTab]);
+
+  const patch = useCallback((f: (r: Partial<Run>) => Partial<Run>) => {
+    setRun((r) => (r && (!r.id || !streamId.current || r.id === streamId.current) ? f(r) : r));
   }, []);
 
+  const apply = useCallback(
+    (e: RunEvent) => {
+      switch (e.type) {
+        case "started":
+          streamId.current = e.runId;
+          patch((r) => ({ ...r, id: e.runId }));
+          router.replace(`/workspace?run=${e.runId}`);
+          window.dispatchEvent(new Event(RUNS_CHANGED));
+          break;
+        case "stage":
+          setStage(e.stage);
+          break;
+        case "review":
+          patch((r) => ({ ...r, reviews: [...(r.reviews ?? []), e.review] }));
+          break;
+        case "synthesis":
+          patch((r) => ({ ...r, synthesis: e.synthesis }));
+          break;
+        case "rescreen":
+          patch((r) => ({ ...r, rescreens: [...(r.rescreens ?? []), e.screen] }));
+          break;
+        case "pdf":
+          patch((r) => ({ ...r, pdf: e.pdf }));
+          setPdfVersion((v) => v + 1);
+          break;
+        case "company":
+          patch((r) => ({ ...r, companyBrief: e.brief, companyIdeas: e.ideas }));
+          break;
+        case "imported":
+          break;
+        case "details":
+          patch((r) => ({ ...r, details: e.details }));
+          break;
+        case "email":
+          patch((r) => ({ ...r, emails: [...(r.emails ?? []), e.email] }));
+          break;
+        case "outreach":
+          patch((r) => ({ ...r, outreach: [...(r.outreach ?? []), e.sequence] }));
+          break;
+        case "error":
+          setError(e.message);
+          break;
+        case "done":
+          patch(() => e.run);
+          setStage("");
+          break;
+      }
+    },
+    [patch, router],
+  );
+
   const drive = useCallback(
-    async (request: Promise<Response>) => {
+    async (request: Promise<Response>, id?: string) => {
+      streamId.current = id ?? null;
       setBusy(true);
       setError("");
       try {
@@ -141,71 +148,36 @@ export default function Home() {
       } finally {
         setBusy(false);
         setStage("");
-        refreshRuns();
+        streamId.current = null;
+        refreshSources();
+        window.dispatchEvent(new Event(RUNS_CHANGED));
       }
     },
-    [apply, refreshRuns],
+    [apply, refreshSources],
   );
 
-  const post = (url: string, body?: unknown) =>
-    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
-
-  // With only a link filled in, the server imports it first.
-  function startRun() {
+  function startRun(input: { url?: string; jobText?: string; resumeFile: string; research: boolean; outreach: boolean }) {
     setRun({ reviews: [], rescreens: [] });
     setTab("panel");
-    setImported("");
-    drive(
-      post("/api/autopilot", {
-        url: jobText.trim() ? undefined : jobUrl,
-        jobText: jobText.trim() ? jobText : undefined,
-        resumeFile,
-        research: withResearch,
-        outreach: withOutreach,
-      }),
-    );
+    drive(post("/api/autopilot", input));
   }
 
-  async function openRun(id: string) {
+  function newRun() {
+    setRun(null);
     setError("");
-    setStage("");
-    setRun(await (await fetch(`/api/runs/${id}`)).json());
-    setPdfVersion((v) => v + 1);
+    router.push("/workspace");
   }
 
-  async function importUrl() {
-    setImporting(true);
-    setError("");
-    setImported("");
-    try {
-      const res = await post("/api/import-job", { url: jobUrl });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      setJobText(data.text);
-      setImported(
-        `Imported ${data.title}${data.company ? ` at ${data.company}` : ""}${data.founders.length ? ` · founders: ${data.founders.map((f: { name: string }) => f.name).join(", ")}` : ""}. Saved to job descriptions/${data.folder}/.`,
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setImporting(false);
-    }
-  }
-
-  const ready = Boolean(run?.id && run.synthesis);
+  // A run is on screen when the URL names it, or while a new one is starting
+  // and has no id yet. "Workspace" in the rail goes back to the form.
+  const showing = run && (run.id ? run.id === linked : busy) ? run : null;
+  const ready = Boolean(showing?.id && showing.synthesis);
+  const act = (path: string, body?: unknown) => drive(post(`/api/runs/${showing!.id}/${path}`, body), showing!.id);
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight">Hiring Panel</h1>
-        <p className="mt-1 text-sm text-muted">
-          Paste a job posting. Seven reviewers judge your resume against it; then rebuild it, design projects aimed at the company, answer the
-          application form and draft the emails.
-        </p>
-      </header>
-
+    <main className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-4 py-6 sm:px-8">
       {sources && !sources.hasKey && (
-        <Notice tone="bad">
+        <Notice tone="fail">
           No <code>ANTHROPIC_API_KEY</code>. Add it to <code>panel-app/.env.local</code> and restart <code>npm run dev</code>.
         </Notice>
       )}
@@ -215,284 +187,414 @@ export default function Home() {
         </Notice>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[22rem_1fr]">
-        <aside className="space-y-6">
-          <Card title="New run">
-            <div className="flex items-baseline justify-between">
-              <label className="block text-xs font-medium text-muted">Resume to review</label>
-              {resumeFile && (
-                <a className="text-xs text-accent" href={`/api/resumes/pdf?id=${encodeURIComponent(resumeFile)}`} target="_blank" rel="noreferrer">
-                  Preview
-                </a>
-              )}
-            </div>
-            <select className={`mt-1 ${input}`} value={resumeFile} onChange={(e) => setResumeFile(e.target.value)}>
-              <optgroup label="Your resumes">
-                {sources?.resumes
-                  .filter((r) => r.group === "base")
-                  .map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.label}
-                    </option>
-                  ))}
-              </optgroup>
-              {!!sources?.resumes.some((r) => r.group === "improved") && (
-                <optgroup label="Improved by the panel (newest first)">
-                  {sources.resumes
-                    .filter((r) => r.group === "improved")
-                    .map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.label} (improved {new Date(r.updatedAt).toLocaleDateString()})
-                      </option>
-                    ))}
-                </optgroup>
-              )}
-            </select>
-            {resumeFile.startsWith("improved:") && (
-              <p className="mt-1 text-xs text-muted">
-                Reviewing an improved PDF. Its rebuild replaces it, and the old version is kept in that folder&rsquo;s <code>archive/</code>. Grounding
-                evals still check against your original resume.
-              </p>
-            )}
-            {!!sources?.jobs.length && (
-              <>
-                <label className="mt-4 block text-xs font-medium text-muted">Saved job posting</label>
-                <select
-                  className={`mt-1 ${input}`}
-                  defaultValue=""
-                  onChange={(e) => setJobText(sources.jobs.find((j) => j.folder === e.target.value)?.text ?? "")}
-                >
-                  <option value="">Paste one below instead</option>
-                  {sources.jobs.map((j) => <option key={j.folder}>{j.folder}</option>)}
-                </select>
-              </>
-            )}
-            <label className="mt-4 block text-xs font-medium text-muted">Job link (YC, Greenhouse, Lever, Ashby, any job page)</label>
-            <div className="mt-1 flex gap-2">
-              <input
-                className={input}
-                placeholder="https://www.ycombinator.com/companies/…/jobs/…"
-                value={jobUrl}
-                onChange={(e) => setJobUrl(e.target.value)}
-              />
-              <button className={secondary} disabled={importing || !jobUrl.trim()} onClick={importUrl}>
-                {importing ? "…" : "Import"}
-              </button>
-            </div>
-            {imported && <p className="mt-1 text-xs text-good">{imported}</p>}
+      {!showing && (
+        <>
+          <PageHeader title="New run">
+            Pick a resume and a job. Seven reviewers judge it, then the app rebuilds it into a one-page PDF and puts the job on the Board.
+          </PageHeader>
+          {error && <Notice tone="fail">{error}</Notice>}
+          <div className="grid items-start gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_360px]">
+            <NewRun sources={sources} busy={busy} onStart={startRun} onError={setError} />
+            <KnowledgePanel />
+          </div>
+        </>
+      )}
 
-            <label className="mt-4 block text-xs font-medium text-muted">Job posting</label>
-            <textarea
-              className={`mt-1 h-56 resize-y font-mono text-xs ${input}`}
-              placeholder="Paste the full job description"
-              value={jobText}
-              onChange={(e) => setJobText(e.target.value)}
-            />
-            <div className="mt-3 space-y-1 text-xs">
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={withResearch} onChange={(e) => setWithResearch(e.target.checked)} />
-                Research the company and suggest projects aimed at it (+ about $0.15)
-              </label>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={withOutreach} onChange={(e) => setWithOutreach(e.target.checked)} />
-                Draft a LinkedIn + email outreach sequence (+ about $0.05)
-              </label>
-            </div>
-            <button className={`mt-3 w-full ${primary}`} disabled={busy || !(jobText.trim() || jobUrl.trim()) || !resumeFile} onClick={startRun}>
-              {busy ? "Working…" : jobText.trim() ? "Run everything" : jobUrl.trim() ? "Import the link and run everything" : "Run everything"}
-            </button>
-            <p className="mt-2 text-xs text-muted">
-              Panel, rebuild and PDF, plus the application email if the posting asks for one. About $0.20 and 1–2 minutes on the balanced profile. The
-              job lands on the Board.
-            </p>
-          </Card>
-
-          <KnowledgePanel />
-
-          <Card title="Past runs">
-            {runs.length === 0 && <p className="text-sm text-muted">None yet.</p>}
-            <ul className="space-y-1">
-              {runs.map((r) => (
-                <li key={r.id}>
-                  <button className="w-full rounded px-2 py-1 text-left text-sm hover:bg-background" onClick={() => openRun(r.id)}>
-                    <span className="font-medium">{r.synthesis ? `${r.synthesis.job.company} · ${r.synthesis.job.role}` : `${r.id} (failed)`}</span>
-                    <span className="block text-xs text-muted">{new Date(r.createdAt).toLocaleString()}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </aside>
-
-        <section className="min-w-0 space-y-6">
-          {run && (
-            <nav className="flex flex-wrap gap-1 border-b border-border">
-              {(
-                [
-                  ["panel", "Panel"],
-                  ["studio", "Project studio"],
-                  ["qa", "Application Q&A"],
-                  ["email", "Outreach & email"],
-                ] as [Tab, string][]
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  disabled={id !== "panel" && !ready}
-                  onClick={() => setTab(id)}
-                  className={`-mb-px border-b-2 px-3 py-2 text-sm disabled:opacity-40 ${tab === id ? "border-accent font-medium" : "border-transparent text-muted"}`}
-                >
+      {showing && (
+        <>
+          <RunHeader run={showing} onNew={newRun} busy={busy} />
+          <StatStrip run={showing} busy={busy} />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div role="tablist" aria-label="Run sections" className="segmented">
+              {TABS.map(([id, label]) => (
+                <button key={id} role="tab" aria-selected={tab === id} disabled={id !== "panel" && !ready} onClick={() => setTab(id)}>
                   {label}
                 </button>
               ))}
-            </nav>
-          )}
-          {stage && <p className="animate-pulse text-sm text-muted">{stage}…</p>}
-          {error && <Notice tone="bad">{error}</Notice>}
-          {!run && <EmptyState />}
+            </div>
+            {stage && (
+              <p className="eyebrow streaming" aria-live="polite">
+                {stage}
+              </p>
+            )}
+          </div>
+          {error && <Notice tone="fail">{error}</Notice>}
 
-          {run && tab === "panel" && (
-            <>
-              <Reviews reviews={run.reviews ?? []} busy={busy && !run.synthesis} />
-              {run.details && <DetailsCard details={run.details} />}
-              {run.synthesis && (
+          {tab === "panel" && (
+            <TwoColumn
+              side={showing.pdf && showing.id ? <PdfPanel runId={showing.id} pdf={showing.pdf} version={pdfVersion} /> : showing.details && <DetailsCard details={showing.details} />}
+            >
+              <Reviews reviews={showing.reviews ?? []} busy={busy && !showing.synthesis} rescreens={showing.rescreens ?? []} />
+              {showing.synthesis && (
                 <>
-                  <ScreenSummary before={run.reviews?.find((r) => r.id === "screen")} after={run.rescreens ?? []} />
-                  <Mistakes synthesis={run.synthesis} />
-                  <Ideas title="Projects to build" ideas={run.synthesis.projects} />
-                  {run.synthesis.questions.length > 0 && (
+                  <Mistakes synthesis={showing.synthesis} />
+                  {showing.synthesis.questions.length > 0 && (
                     <Questions
-                      key={run.synthesis.questions.map((q) => q.id).join()}
-                      synthesis={run.synthesis}
+                      key={showing.synthesis.questions.map((q) => q.id).join()}
+                      synthesis={showing.synthesis}
                       busy={busy}
-                      onSubmit={(answers) => drive(post(`/api/runs/${run.id}/answers`, { answers }))}
+                      onSubmit={(answers) => act("answers", { answers })}
                     />
                   )}
+                  <IdeaGrid title="Projects to build" ideas={showing.synthesis.projects} />
                 </>
               )}
-              {run.pdf && run.id && <PdfPanel runId={run.id} pdf={run.pdf} version={pdfVersion} />}
-            </>
+              {showing.pdf && showing.details && <DetailsCard details={showing.details} />}
+            </TwoColumn>
           )}
 
-          {run?.id && run.synthesis && tab === "studio" && (
+          {ready && tab === "studio" && (
             <Studio
-              run={run as Run}
+              run={showing as Run}
               busy={busy}
               pdfVersion={pdfVersion}
-              onResearch={() => drive(post(`/api/runs/${run.id}/company`))}
-              onAddProject={(p) => drive(post(`/api/runs/${run.id}/projects`, p))}
+              onResearch={() => act("company")}
+              onAddProject={(p) => act("projects", p)}
             />
           )}
-          {run?.id && run.synthesis && tab === "qa" && <Chat key={run.id} run={run as Run} />}
-          {run?.id && run.synthesis && tab === "email" && (
-            <>
-              <Outreach key={`o-${run.id}`} run={run as Run} />
-              <Emails key={run.id} run={run as Run} />
-            </>
+          {ready && tab === "qa" && (
+            <TwoColumn side={showing.details && <DetailsCard details={showing.details} />}>
+              <Chat key={showing.id} run={showing as Run} />
+            </TwoColumn>
           )}
-        </section>
-      </div>
+          {ready && tab === "email" && (
+            <TwoColumn side={showing.details && <DetailsCard details={showing.details} />}>
+              <Outreach key={`o-${showing.id}`} run={showing as Run} />
+              <Emails key={showing.id} run={showing as Run} />
+            </TwoColumn>
+          )}
+        </>
+      )}
     </main>
   );
 }
 
-function Card({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
+function TwoColumn({ children, side }: { children: React.ReactNode; side?: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">{title}</h2>
-        {action}
+    <div className="grid items-start gap-6 min-[1440px]:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="flex min-w-0 flex-col gap-6">{children}</div>
+      {side && <aside className="flex min-w-0 flex-col gap-6 min-[1440px]:sticky min-[1440px]:top-6">{side}</aside>}
+    </div>
+  );
+}
+
+// ---------- New run ----------
+
+function NewRun({
+  sources,
+  busy,
+  onStart,
+  onError,
+}: {
+  sources: Sources | null;
+  busy: boolean;
+  onStart: (input: { url?: string; jobText?: string; resumeFile: string; research: boolean; outreach: boolean }) => void;
+  onError: (message: string) => void;
+}) {
+  const [picked, setPicked] = useState("");
+  const [jobText, setJobText] = useState("");
+  const [jobUrl, setJobUrl] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [imported, setImported] = useState("");
+  const [research, setResearch] = useState(false);
+  const [outreach, setOutreach] = useState(false);
+  const resumeFile = picked || sources?.resumes[0]?.id || "";
+
+  async function importUrl() {
+    setImporting(true);
+    onError("");
+    setImported("");
+    try {
+      const res = await post("/api/import-job", { url: jobUrl });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setJobText(data.text);
+      setImported(
+        `Imported ${data.title}${data.company ? ` at ${data.company}` : ""}${data.founders.length ? `, founders ${data.founders.map((f: { name: string }) => f.name).join(", ")}` : ""}. Saved to job descriptions/${data.folder}/.`,
+      );
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  const groups: [string, ResumeOption[]][] = [
+    ["Your resumes", sources?.resumes.filter((r) => r.group === "base") ?? []],
+    ["Improved by the panel, newest first", sources?.resumes.filter((r) => r.group === "improved") ?? []],
+  ];
+  const label = jobText.trim() ? "Run everything" : jobUrl.trim() ? "Import the link and run everything" : "Run everything";
+
+  return (
+    <Card>
+      <div className="flex flex-col gap-6">
+        <fieldset className="min-w-0">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <legend className="field-label mb-0">Resume to review</legend>
+            {resumeFile && (
+              <a className="link-btn text-sm" href={`/api/resumes/pdf?id=${encodeURIComponent(resumeFile)}`} target="_blank" rel="noreferrer">
+                Preview the PDF
+              </a>
+            )}
+          </div>
+          <div className="max-h-72 space-y-4 overflow-y-auto pr-1">
+            {groups
+              .filter(([, list]) => list.length)
+              .map(([title, list]) => (
+                <div key={title}>
+                  <p className="field-hint mb-2">{title}</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {list.map((r) => {
+                      const selected = r.id === resumeFile;
+                      return (
+                        <label
+                          key={r.id}
+                          className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 ${selected ? "border-primary bg-primary-tint text-primary-tint-text" : "border-line bg-surface hover:bg-surface-hover"}`}
+                        >
+                          <input type="radio" name="resume" value={r.id} checked={selected} onChange={() => setPicked(r.id)} />
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-semibold">{r.label}</span>
+                            {r.group === "improved" && (
+                              <span className="block text-xs opacity-80">improved {new Date(r.updatedAt).toLocaleDateString()}</span>
+                            )}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+          </div>
+          {resumeFile.startsWith("improved:") && (
+            <p className="field-hint mt-2">
+              Its rebuild replaces this PDF and keeps the old one in that folder&rsquo;s <code>archive/</code>. Grounding evals still check against
+              your original resume.
+            </p>
+          )}
+        </fieldset>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block min-w-0">
+            <span className="field-label">Job link</span>
+            <span className="flex gap-2">
+              <input
+                className="input w-full min-w-0"
+                placeholder="https://www.ycombinator.com/companies/…/jobs/…"
+                value={jobUrl}
+                onChange={(e) => setJobUrl(e.target.value)}
+              />
+              <button className="btn" disabled={importing || !jobUrl.trim()} onClick={importUrl}>
+                {importing ? "Importing…" : "Import"}
+              </button>
+            </span>
+            <span className="field-hint mt-1 block">YC, Greenhouse, Lever, Ashby or any job page.</span>
+          </label>
+          {!!sources?.jobs.length && (
+            <label className="block min-w-0">
+              <span className="field-label">Or a saved posting</span>
+              <select
+                className="input w-full"
+                defaultValue=""
+                onChange={(e) => setJobText(sources.jobs.find((j) => j.folder === e.target.value)?.text ?? "")}
+              >
+                <option value="">Choose one</option>
+                {sources.jobs.map((j) => (
+                  <option key={j.folder}>{j.folder}</option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+        {imported && <p className="-mt-3 text-sm font-semibold text-pass">{imported}</p>}
+
+        <label className="block">
+          <span className="field-label">Job posting</span>
+          <textarea
+            className="textarea h-56 w-full"
+            placeholder="Paste the full job description, or leave it empty to use the link"
+            value={jobText}
+            onChange={(e) => setJobText(e.target.value)}
+          />
+        </label>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="flex cursor-pointer items-start gap-3 rounded-md border border-line px-3 py-3">
+            <input type="checkbox" className="mt-1" checked={research} onChange={(e) => setResearch(e.target.checked)} />
+            <span>
+              <span className="block text-sm font-semibold">Research the company</span>
+              <span className="field-hint">Projects aimed at its product. About $0.20, free if researched this month.</span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-3 rounded-md border border-line px-3 py-3">
+            <input type="checkbox" className="mt-1" checked={outreach} onChange={(e) => setOutreach(e.target.checked)} />
+            <span>
+              <span className="block text-sm font-semibold">Draft outreach</span>
+              <span className="field-hint">LinkedIn and email sequence to a founder. About $0.06.</span>
+            </span>
+          </label>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <button
+            className="btn btn--accent w-full"
+            disabled={busy || !(jobText.trim() || jobUrl.trim()) || !resumeFile}
+            onClick={() => onStart({ url: jobText.trim() ? undefined : jobUrl, jobText: jobText.trim() || undefined, resumeFile, research, outreach })}
+          >
+            {busy ? "A run is in progress…" : label}
+          </button>
+          <p className="field-hint">Panel, rebuild and PDF, plus the application email if the posting asks for one. About $0.19 and 1–2 minutes.</p>
+        </div>
       </div>
-      {children}
+    </Card>
+  );
+}
+
+// ---------- Run header ----------
+
+function RunHeader({ run, onNew, busy }: { run: Partial<Run>; onNew: () => void; busy: boolean }) {
+  const job = run.synthesis?.job ?? run.details;
+  return (
+    <header className="flex flex-wrap items-end justify-between gap-4">
+      <div className="min-w-0">
+        <h1 className="truncate">{job?.company || (busy ? "Reading the posting" : "Run")}</h1>
+        <p className="mt-1 text-muted">
+          {job?.role}
+          {run.createdAt && <span> · run {new Date(run.createdAt).toLocaleString()}</span>}
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {run.pdf && run.id && (
+          <a className="btn" href={`/api/runs/${run.id}/pdf?download`}>
+            Download PDF
+          </a>
+        )}
+        <button className="btn" disabled={busy} onClick={onNew}>
+          New run
+        </button>
+      </div>
+    </header>
+  );
+}
+
+// The run at a glance. The screen's before and after leads: it is the one
+// number the whole app exists to move.
+function StatStrip({ run, busy }: { run: Partial<Run>; busy: boolean }) {
+  const reviews = run.reviews ?? [];
+  const before = reviews.find((r) => r.id === "screen");
+  const after = run.rescreens?.at(-1);
+  const readers = reviews.filter((r) => r.id !== "screen");
+  const yes = readers.filter((r) => isWin(r.verdict, true)).length;
+  const s = run.synthesis;
+  const held = s ? s.questions.length : null;
+  return (
+    <section aria-label="Run summary" className="card grid gap-0 p-0 sm:grid-cols-2 xl:grid-cols-[1.4fr_1fr_1fr_1fr]">
+      <Stat label="Automated screen">
+        <div className="flex flex-wrap items-center gap-3">
+          <Verdict verdict={before?.verdict} pending={!before && busy} />
+          <span className="verdict-arrow text-xl" aria-label="then">
+            →
+          </span>
+          {after ? <Verdict verdict={after.verdict} /> : <span className={`verdict verdict--pending ${busy ? "streaming" : ""}`}>{busy ? "AFTER REBUILD" : "NOT RUN"}</span>}
+        </div>
+      </Stat>
+      <Stat label="Readers who would advance it">
+        <p className="kpi-value">
+          {yes}
+          <span className="text-lg text-muted"> / {readers.length || 6}</span>
+        </p>
+        <div className="mt-2 flex gap-1" aria-hidden>
+          {readers.map((r) => (
+            <span key={r.id} className={`h-1.5 w-5 rounded-full ${isWin(r.verdict, true) ? "verdict--pass" : "verdict--reject"}`} />
+          ))}
+        </div>
+      </Stat>
+      <Stat label="Mistakes found">
+        <p className="kpi-value">{s ? s.mistakes.length : "–"}</p>
+      </Stat>
+      <Stat label="Open questions">
+        <p className="kpi-value">{held ?? "–"}</p>
+        {held ? <p className="text-xs text-accent-text">lines held back from the PDF</p> : null}
+      </Stat>
+    </section>
+  );
+}
+
+function Stat({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col justify-between gap-3 border-line p-5 [&:not(:first-child)]:border-t sm:[&:nth-child(2)]:border-t-0 sm:[&:nth-child(even)]:border-l xl:[&:not(:first-child)]:border-t-0 xl:[&:not(:first-child)]:border-l">
+      <p className="kpi-label">{label}</p>
+      <div>{children}</div>
     </div>
   );
 }
 
-function Notice({ tone, children }: { tone: "bad" | "warn"; children: React.ReactNode }) {
-  return <div className={`mb-4 rounded-md border px-3 py-2 text-sm ${tone === "bad" ? "border-bad text-bad" : "border-warn text-warn"}`}>{children}</div>;
-}
+// ---------- The panel ----------
 
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
+function Reviews({ reviews, busy, rescreens }: { reviews: Review[]; busy: boolean; rescreens: Screen[] }) {
+  const pending = busy ? Math.max(0, 7 - reviews.length) : 0;
+  const latest = rescreens.at(-1);
   return (
-    <button
-      className={secondary}
-      onClick={async () => {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      }}
-    >
-      {copied ? "Copied" : "Copy"}
-    </button>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted">
-      Pick a resume, paste a job posting, and run the panel. Results stream in here as each reviewer finishes.
-    </div>
-  );
-}
-
-function Reviews({ reviews, busy }: { reviews: Review[]; busy: boolean }) {
-  const sorted = [...reviews].sort((a, b) => REVIEWER_ORDER.indexOf(a.name) - REVIEWER_ORDER.indexOf(b.name));
-  const waiting = busy ? REVIEWER_ORDER.filter((n) => !reviews.some((r) => r.name === n)) : [];
-  return (
-    <Card title={`The panel (${reviews.length}/7)`}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {sorted.map((r) => {
-          const v = verdictLabel(r);
-          return (
-            <details key={r.id} className="rounded-md border border-border p-3">
-              <summary className="flex cursor-pointer items-center justify-between gap-2 text-sm">
-                <span className="font-medium">{r.name}</span>
-                <span className={`rounded border px-1.5 py-0.5 text-xs font-semibold ${v.tone}`}>{v.text}</span>
-              </summary>
-              <pre className="mt-2 whitespace-pre-wrap font-sans text-xs leading-relaxed text-muted">{r.text}</pre>
-            </details>
-          );
-        })}
-        {waiting.map((n) => (
-          <div key={n} className="animate-pulse rounded-md border border-dashed border-border p-3 text-sm text-muted">
-            {n}: reading…
+    <section className="flex flex-col gap-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2>The panel</h2>
+        <span className="mono text-sm text-muted">{reviews.length} / 7 in</span>
+      </div>
+      <div aria-live="polite" className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
+        {reviews.map((r) => (
+          <details key={r.id} className="card reviewer p-5">
+            <summary className="flex flex-col gap-3">
+              <span className="flex items-start justify-between gap-3">
+                <span className="reviewer__role">{r.name}</span>
+                <Chevron />
+              </span>
+              <Verdict verdict={r.verdict} reader={r.id !== "screen"} />
+              <span className="line-clamp-3 text-sm text-muted">{firstLine(r.text)}</span>
+            </summary>
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{r.text}</p>
+          </details>
+        ))}
+        {Array.from({ length: pending }, (_, i) => (
+          <div key={i} className="card reviewer p-5">
+            <span className="reviewer__role">Reviewer {reviews.length + i + 1}</span>
+            <Verdict pending />
           </div>
         ))}
       </div>
-    </Card>
+      {latest && (
+        <details className="card card--sunken p-5">
+          <summary className="flex items-center gap-2 font-semibold">
+            <Chevron />
+            Why the re-screen gave <Verdict verdict={latest.verdict} />
+          </summary>
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{latest.text}</p>
+        </details>
+      )}
+    </section>
   );
 }
 
-function ScreenSummary({ before, after }: { before?: Review; after: Screen[] }) {
-  if (!before) return null;
-  return (
-    <Card title="Automated screen, before and after">
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className={`rounded border px-1.5 py-0.5 text-xs font-semibold ${verdictTone(before.verdict)}`}>Before: {before.verdict}</span>
-        {after.map((s, i) => (
-          <span key={i} className={`rounded border px-1.5 py-0.5 text-xs font-semibold ${verdictTone(s.verdict)}`}>
-            After{after.length > 1 ? ` #${i + 1}` : ""}: {s.verdict}
-          </span>
-        ))}
-      </div>
-      {after.length > 0 && (
-        <details className="mt-3">
-          <summary className="cursor-pointer text-xs text-muted">Why (latest re-screen)</summary>
-          <pre className="mt-2 whitespace-pre-wrap font-sans text-xs leading-relaxed text-muted">{after[after.length - 1].text}</pre>
-        </details>
-      )}
-    </Card>
-  );
+// The first sentence after the verdict line, as a preview on a closed card.
+function firstLine(text: string): string {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const body = lines.find((l) => !/^\**\s*verdict/i.test(l) && l.length > 30) ?? lines[0] ?? "";
+  return body.replace(/[*#>]/g, "").trim();
 }
 
 function Mistakes({ synthesis }: { synthesis: Synthesis }) {
+  const n = synthesis.mistakes.length;
+  // The list is ranked worst first; the top third is high severity.
+  const severity = (i: number) => (i < Math.ceil(n / 3) ? "mistake--high" : i < Math.ceil((2 * n) / 3) ? "" : "mistake--low");
   return (
-    <Card title={`What is wrong, worst first (${synthesis.mistakes.length})`}>
-      <ol className="list-decimal space-y-2 pl-5 text-sm">
+    <Card title={`What is wrong, worst first`} action={<span className="mono text-sm text-muted">{n} found</span>}>
+      <ol className="flex flex-col gap-5">
         {synthesis.mistakes.map((m, i) => (
-          <li key={i}>
-            <span className="font-medium">{m.quote}</span> <span className="text-muted">{m.why}</span>
-            <span className="block text-xs text-muted">Flagged by: {m.flaggedBy}</span>
+          <li key={i} className={`mistake ${severity(i)}`}>
+            <span className="mistake__bar" aria-hidden />
+            <div className="flex min-w-0 flex-col gap-2">
+              <p className="mistake__quote break-words">{m.quote}</p>
+              <p className="text-sm">{m.why}</p>
+              <p className="flagged-by">Flagged by {m.flaggedBy}</p>
+            </div>
           </li>
         ))}
       </ol>
@@ -500,42 +602,48 @@ function Mistakes({ synthesis }: { synthesis: Synthesis }) {
   );
 }
 
-function Ideas({ title, ideas, onUse }: { title: string; ideas: ProjectIdea[]; onUse?: (p: ProjectIdea) => void }) {
+function IdeaGrid({ title, ideas, onUse }: { title: string; ideas: ProjectIdea[]; onUse?: (p: ProjectIdea) => void }) {
   return (
-    <Card title={title}>
-      <p className="mb-3 text-xs text-muted">Build one, then add it in Project studio. It goes on the resume once you have given its real details.</p>
-      <div className="grid gap-3 md:grid-cols-2">
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2>{title}</h2>
+        <p className="mt-1 text-sm text-muted">Build one, then add it in Project studio. It goes on the resume once you have given its real details.</p>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
         {ideas.map((p) => (
-          <details key={p.title} className="rounded-md border border-border p-3">
-            <summary className="cursor-pointer">
-              <span className="text-sm font-medium">{p.title}</span>
-              <span className="ml-2 text-xs text-muted">{p.scope}</span>
-              {p.extends && <span className="mt-1 block text-xs text-accent">Extends {p.extends}</span>}
-              <p className="mt-1 text-xs text-muted">{p.pitch}</p>
+          <details key={p.title} className="card p-5">
+            <summary className="flex flex-col gap-3">
+              <span className="flex items-start justify-between gap-3">
+                <h3 className="text-lg">{p.title}</h3>
+                <Chevron />
+              </span>
+              <span className="text-sm text-muted">{p.scope}</span>
+              <span className="flex flex-wrap gap-2">
+                <span className="badge badge--accent whitespace-normal">Closes: {p.closesGap}</span>
+                {p.extends && <span className="badge badge--neutral mono">extends {p.extends}</span>}
+              </span>
+              <span className="text-sm">{p.pitch}</span>
             </summary>
-            <div className="mt-3 space-y-2 text-xs">
+            <div className="mt-4 flex flex-col gap-3 border-t border-line-subtle pt-4 text-sm">
               {p.companyAngle && (
                 <p>
-                  <span className="font-medium">Company angle:</span> {p.companyAngle}
+                  <span className="font-semibold">Company angle.</span> {p.companyAngle}
                 </p>
               )}
               <p>
-                <span className="font-medium">Closes:</span> {p.closesGap}
+                <span className="font-semibold">Stack.</span> {p.stack.join(", ")}
               </p>
               <p>
-                <span className="font-medium">Stack:</span> {p.stack.join(", ")}
+                <span className="font-semibold">Keywords it earns.</span> {p.keywords.join(", ")}
               </p>
-              <p>
-                <span className="font-medium">Keywords it earns:</span> {p.keywords.join(", ")}
-              </p>
-              <ol className="list-decimal space-y-1 pl-4">
-                {p.steps.map((s) => <li key={s}>{s}</li>)}
+              <ol className="list-decimal space-y-1 pl-5">
+                {p.steps.map((s) => (
+                  <li key={s}>{s}</li>
+                ))}
               </ol>
-              <p className="rounded bg-background p-2">
-                <span className="font-medium">Bullet, once built:</span> {p.bulletOnceBuilt}
-              </p>
+              <p className="mistake__quote">{p.bulletOnceBuilt}</p>
               {onUse && (
-                <button className={secondary} onClick={() => onUse(p)}>
+                <button className="btn self-start" onClick={() => onUse(p)}>
                   I built this: add its details
                 </button>
               )}
@@ -543,63 +651,122 @@ function Ideas({ title, ideas, onUse }: { title: string; ideas: ProjectIdea[]; o
           </details>
         ))}
       </div>
-    </Card>
+    </section>
   );
 }
 
 function Questions({ synthesis, busy, onSubmit }: { synthesis: Synthesis; busy: boolean; onSubmit: (a: Record<string, string>) => void }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const filled = Object.values(answers).filter((a) => a.trim()).length;
-  const waiting = (id: string) =>
-    [...synthesis.resume.experience.flatMap((x) => x.bullets), ...synthesis.resume.projects.flatMap((p) => p.bullets), ...synthesis.resume.summary].filter(
-      (l) => l.match(NEEDS)?.[1] === id,
-    ).length;
+  const lines = [...synthesis.resume.summary, ...synthesis.resume.experience.flatMap((x) => x.bullets), ...synthesis.resume.projects.flatMap((p) => p.bullets)];
   return (
-    <Card title={`Questions to answer (${synthesis.questions.length})`}>
-      <p className="mb-3 text-xs text-muted">
-        Lines that need these facts are left out of the PDF. Answers are saved to <code>resume/profile.md</code> and reused on every run. Write
-        &ldquo;none&rdquo; if you don&rsquo;t have it.
-      </p>
-      <div className="space-y-4">
-        {synthesis.questions.map((q) => (
-          <div key={q.id}>
-            <label className="block text-sm font-medium">{q.question}</label>
-            <p className="text-xs text-muted">
-              {q.why}
-              {waiting(q.id) > 0 && ` · unlocks ${waiting(q.id)} line${waiting(q.id) === 1 ? "" : "s"}`}
-            </p>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2>Questions to answer</h2>
+        <p className="mt-1 text-sm text-muted">
+          Lines that need these facts are held back from the PDF. Answers are saved to <code>resume/profile.md</code> and reused on every run.
+          Write &ldquo;none&rdquo; if you don&rsquo;t have it.
+        </p>
+      </div>
+      {synthesis.questions.map((q) => {
+        const waiting = lines.filter((l) => l.match(NEEDS)?.[1] === q.id);
+        const answer = answers[q.id]?.trim() ?? "";
+        const none = /^(none|no|skip)$/i.test(answer);
+        return (
+          <Card key={q.id}>
+            <label htmlFor={`q-${q.id}`} className="block text-md font-semibold">
+              {q.question}
+            </label>
+            <p className="mt-1 text-sm text-muted">{q.why}</p>
+            {waiting.map((l) => (
+              <p key={l} className={`mt-3 text-sm ${none ? "text-disabled line-through" : ""}`}>
+                {l.replace(NEEDS, "").trim()}{" "}
+                <span className={answer && !none ? "badge badge--pass" : "heldback"}>{answer && !none ? "answered" : "needs your answer"}</span>
+              </p>
+            ))}
+            {waiting.length > 0 && (
+              <p className="unlocks mt-2">
+                Unlocks {waiting.length} line{waiting.length === 1 ? "" : "s"}
+              </p>
+            )}
             <textarea
-              className={`mt-1 h-16 resize-y ${input}`}
+              id={`q-${q.id}`}
+              className="textarea mt-3 min-h-20 w-full"
               value={answers[q.id] ?? ""}
               onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
             />
-          </div>
-        ))}
-      </div>
-      <button className={`mt-3 ${primary}`} disabled={busy || filled === 0} onClick={() => onSubmit(answers)}>
+          </Card>
+        );
+      })}
+      <button className="btn btn--primary self-start" disabled={busy || filled === 0} onClick={() => onSubmit(answers)}>
         {busy ? "Updating…" : `Update the resume with ${filled} answer${filled === 1 ? "" : "s"}`}
       </button>
-    </Card>
+    </section>
   );
 }
 
 function PdfPanel({ runId, pdf, version }: { runId: string; pdf: NonNullable<Run["pdf"]>; version: number }) {
   const src = `/api/runs/${runId}/pdf?v=${version}`;
-  const ok = pdf.check.pages === 1 && pdf.check.placeholders.length === 0;
+  const pages = pdf.check.pages;
   return (
-    <Card
-      title="Improved resume"
-      action={
-        <a className={secondary} href={`${src}&download`}>
-          Download PDF
-        </a>
-      }
-    >
-      <p className={`mb-3 text-xs ${ok ? "text-good" : "text-bad"}`}>
-        {pdf.check.pages} page{pdf.check.pages === 1 ? "" : "s"} · {pdf.check.placeholders.length} placeholders · {pdf.check.links.length} links · saved
-        to <code>improved resume/{pdf.folder}/</code>
+    <Card title="Improved resume" action={<a className="link-btn text-sm" href={src} target="_blank" rel="noreferrer">Open</a>} className="p-5">
+      <div className="mb-3 flex flex-wrap gap-2">
+        <span className={`badge ${pages === 1 ? "badge--pass" : "badge--fail"}`}>
+          {pages} page{pages === 1 ? "" : "s"}
+        </span>
+        <span className={`badge ${pdf.check.placeholders.length ? "badge--fail" : "badge--pass"}`}>{pdf.check.placeholders.length} placeholders</span>
+        <span className="badge badge--neutral">{pdf.check.links.length} links</span>
+      </div>
+      <iframe key={src} src={src} title="Improved resume PDF" className="h-[min(78dvh,60rem)] w-full rounded-md border border-line bg-sunken" />
+      <p className="mono mt-3 truncate text-xs text-muted" title={`improved resume/${pdf.folder}/`}>
+        improved resume/{pdf.folder}/
       </p>
-      <iframe key={src} src={src} title="Resume PDF" className="h-[60rem] w-full rounded-md border border-border bg-white" />
+    </Card>
+  );
+}
+
+function DetailsCard({ details: d }: { details: JobDetails }) {
+  const rows: [string, string][] = [
+    ["Location", d.location],
+    ["Salary", d.salary],
+    ["Experience", d.experience],
+    ["How to apply", d.howToApply],
+    ["Email it asks for", d.emailAsk],
+    ["Stack", d.stack.join(", ")],
+    ["Must have", d.mustHave.join("; ")],
+    ["Nice to have", d.niceToHave.join("; ")],
+  ];
+  return (
+    <Card title="The job" className="p-5">
+      {d.redFlags.length > 0 && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {d.redFlags.map((f) => (
+            <span key={f} className="badge badge--warn whitespace-normal">
+              Fit risk: {f}
+            </span>
+          ))}
+        </div>
+      )}
+      <dl className="grid grid-cols-[7.5rem_1fr] gap-x-3 gap-y-2 text-sm">
+        {rows
+          .filter(([, v]) => v)
+          .map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt className="text-muted">{k}</dt>
+              <dd className="min-w-0 break-words">{v}</dd>
+            </div>
+          ))}
+      </dl>
+      {d.formQuestions.length > 0 && (
+        <div className="mt-4 border-t border-line-subtle pt-4">
+          <p className="mb-2 text-sm font-semibold">Form questions</p>
+          <ul className="list-disc space-y-1 pl-5 text-sm">
+            {d.formQuestions.map((q) => (
+              <li key={q}>{q}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </Card>
   );
 }
@@ -639,16 +806,17 @@ function Studio({
   }
 
   return (
-    <>
+    <TwoColumn side={run.pdf && <PdfPanel runId={run.id} pdf={run.pdf} version={pdfVersion} />}>
       <Card
+        sunken
         title={`Projects aimed at ${company}`}
         action={
-          <button className={secondary} disabled={busy} onClick={onResearch}>
+          <button className="btn btn--accent" disabled={busy} onClick={onResearch}>
             {busy ? "Working…" : run.companyIdeas ? "Research again" : `Research ${company}`}
           </button>
         }
       >
-        {!run.companyIdeas && (
+        {!run.companyBrief && (
           <p className="text-sm text-muted">
             Searches the web for {company}&rsquo;s product, customers, integrations and stack, then designs short projects that mirror them and close
             the panel&rsquo;s gaps.
@@ -656,46 +824,51 @@ function Studio({
         )}
         {run.companyBrief && (
           <details>
-            <summary className="cursor-pointer text-xs text-muted">What the research found</summary>
-            <pre className="mt-2 whitespace-pre-wrap font-sans text-xs leading-relaxed text-muted">{run.companyBrief}</pre>
+            <summary className="flex items-center gap-2 text-sm font-semibold">
+              <Chevron />
+              What the research found
+            </summary>
+            <div className="mt-3 max-h-[28rem] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed">
+              <Linked text={run.companyBrief} />
+            </div>
           </details>
         )}
       </Card>
-      {run.companyIdeas && <Ideas title="Company-tailored project ideas" ideas={run.companyIdeas} onUse={applyIdea} />}
-      <Ideas title="Gap-closing project ideas" ideas={run.synthesis!.projects} onUse={applyIdea} />
+      {run.companyIdeas && <IdeaGrid title="Ideas aimed at the company" ideas={run.companyIdeas} onUse={applyIdea} />}
+      <IdeaGrid title="Ideas that close the panel's gaps" ideas={run.synthesis!.projects} onUse={applyIdea} />
 
       <div ref={formRef}>
         <Card title="Add a project you built">
-          <p className="mb-3 text-xs text-muted">
+          <p className="-mt-2 mb-4 text-sm text-muted">
             Give the real details. The project is saved to your profile and the resume is rebuilt with it. In-progress work is labelled as such.
           </p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-xs font-medium text-muted">
-              Name
-              <input className={`mt-1 ${input}`} value={project.name} onChange={set("name")} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="field-label">Name</span>
+              <input className="input w-full" value={project.name} onChange={set("name")} />
             </label>
-            <label className="text-xs font-medium text-muted">
-              Repo or demo URL
-              <input className={`mt-1 ${input}`} value={project.url} onChange={set("url")} placeholder="https://github.com/…" />
+            <label className="block">
+              <span className="field-label">Repo or demo URL</span>
+              <input className="input w-full" value={project.url} onChange={set("url")} placeholder="https://github.com/…" />
             </label>
-            <label className="text-xs font-medium text-muted">
-              Stack
-              <input className={`mt-1 ${input}`} value={project.stack} onChange={set("stack")} />
+            <label className="block">
+              <span className="field-label">Stack</span>
+              <input className="input w-full" value={project.stack} onChange={set("stack")} />
             </label>
-            <label className="text-xs font-medium text-muted">
-              Status
-              <select className={`mt-1 ${input}`} value={project.status} onChange={set("status")}>
+            <label className="block">
+              <span className="field-label">Status</span>
+              <select className="input w-full" value={project.status} onChange={set("status")}>
                 <option value="built">Built</option>
                 <option value="in progress">In progress</option>
               </select>
             </label>
           </div>
-          <label className="mt-3 block text-xs font-medium text-muted">
-            What you built, how, and the numbers you measured
-            <textarea className={`mt-1 h-40 resize-y ${input}`} value={project.details} onChange={set("details")} />
+          <label className="mt-4 block">
+            <span className="field-label">What you built, how, and the numbers you measured</span>
+            <textarea className="textarea h-40 w-full" value={project.details} onChange={set("details")} />
           </label>
           <button
-            className={`mt-3 ${primary}`}
+            className="btn btn--primary mt-4"
             disabled={busy || !project.name.trim() || !project.details.trim()}
             onClick={() => {
               onAddProject(project);
@@ -706,12 +879,35 @@ function Studio({
           </button>
         </Card>
       </div>
-      {run.pdf && <PdfPanel runId={run.id} pdf={run.pdf} version={pdfVersion} />}
+    </TwoColumn>
+  );
+}
+
+// Research briefs cite plain URLs; make them links.
+function Linked({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(https?:\/\/[^\s)]+)/g).map((p, i) =>
+        /^https?:\/\//.test(p) ? (
+          <a key={i} href={p} target="_blank" rel="noreferrer" className="break-all">
+            {p}
+          </a>
+        ) : (
+          p
+        ),
+      )}
     </>
   );
 }
 
 // ---------- Application Q&A ----------
+
+// "(150 words)", "max 1000 characters": the limit a form question states.
+function limitOf(question: string): { limit: number; unit: "words" | "chars" } | null {
+  const m = question.match(/(\d{2,5})\s*(words?|characters?|chars?)/i);
+  if (!m) return null;
+  return { limit: Number(m[1]), unit: /^w/i.test(m[2]) ? "words" : "chars" };
+}
 
 function Chat({ run }: { run: Run }) {
   const company = run.synthesis!.job.company;
@@ -723,7 +919,7 @@ function Chat({ run }: { run: Run }) {
   // Braces matter: scrollIntoView returns a Promise in current Chrome, and an
   // effect may only return a cleanup function.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end" });
+    endRef.current?.scrollIntoView({ block: "nearest" });
   }, [turns]);
 
   const starters = [
@@ -741,10 +937,10 @@ function Chat({ run }: { run: Run }) {
     setDraft("");
     setTurns((t) => [...t, { role: "user", text: message }, { role: "assistant", text: "" }]);
     try {
-      const res = await fetch(`/api/runs/${run.id}/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }) });
+      const res = await post(`/api/runs/${run.id}/chat`, { message });
       await readNdjson<{ type: string; text?: string; message?: string }>(res, (e) => {
         if (e.type === "delta") setTurns((t) => [...t.slice(0, -1), { role: "assistant", text: t[t.length - 1].text + e.text }]);
-        if (e.type === "error") setError(e.message ?? "error");
+        if (e.type === "error") setError(e.message ?? "The answer failed. Try sending it again.");
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -763,52 +959,71 @@ function Chat({ run }: { run: Run }) {
       title="Application Q&A"
       action={
         turns.length > 0 && (
-          <button className={secondary} disabled={busy} onClick={clear}>
-            Clear
+          <button className="btn btn--ghost" disabled={busy} onClick={clear}>
+            Clear the chat
           </button>
         )
       }
     >
-      <p className="mb-3 text-xs text-muted">
-        Paste a question from the application form, with its word limit if it has one. Answers use only your resume, profile, repos and portfolio. Gaps
-        show as [brackets] for you to fill.
+      <p className="-mt-2 mb-4 text-sm text-muted">
+        Paste a question from the application form, with its word limit if it has one. Answers use only your resume, profile, repos and portfolio.
+        Gaps show as <span className="heldback">[brackets]</span> for you to fill.
       </p>
       {turns.length === 0 && (
-        <div className="mb-3 flex flex-wrap gap-2">
+        <div className="mb-4 grid gap-2 sm:grid-cols-2">
           {starters.map((s) => (
-            <button key={s} className={secondary} onClick={() => send(s)}>
+            <button key={s} className="btn h-auto justify-start py-2 text-left font-medium whitespace-normal" onClick={() => send(s)}>
               {s}
             </button>
           ))}
         </div>
       )}
-      <div className="max-h-[38rem] space-y-3 overflow-auto">
-        {turns.map((t, i) => (
-          <div key={i} className={t.role === "user" ? "ml-auto max-w-[85%] rounded-md bg-background p-3 text-sm" : "rounded-md border border-border p-3 text-sm"}>
-            <p className="whitespace-pre-wrap leading-relaxed">{t.text || (busy ? "…" : "")}</p>
-            {t.role === "assistant" && t.text && !(busy && i === turns.length - 1) && (
-              <div className="mt-2 flex items-center gap-2">
-                <CopyButton text={t.text} />
-                <span className="text-xs text-muted">{t.text.trim().split(/\s+/).length} words</span>
-              </div>
-            )}
-          </div>
-        ))}
+      <div className="flex max-h-[38rem] flex-col gap-3 overflow-y-auto">
+        {turns.map((t, i) => {
+          const question = t.role === "assistant" ? turns[i - 1]?.text ?? "" : "";
+          const limit = limitOf(question);
+          const done = t.text && !(busy && i === turns.length - 1);
+          return t.role === "user" ? (
+            <div key={i} className="ml-auto max-w-[85%] rounded-lg bg-sunken px-4 py-3 text-sm whitespace-pre-wrap">
+              {t.text}
+            </div>
+          ) : (
+            <div key={i} className="rounded-lg border border-line bg-surface px-4 py-3">
+              <p className={`text-sm leading-relaxed whitespace-pre-wrap ${!t.text ? "streaming text-muted" : ""}`}>
+                {t.text ? <WithGaps text={t.text} /> : "Writing…"}
+              </p>
+              {done && (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  {limit ? (
+                    <LimitMeter used={limit.unit === "words" ? wordCount(t.text) : t.text.length} limit={limit.limit} unit={limit.unit} />
+                  ) : (
+                    <span className="mono text-xs text-muted">{wordCount(t.text)} words</span>
+                  )}
+                  <CopyButton text={t.text} />
+                </div>
+              )}
+            </div>
+          );
+        })}
         <div ref={endRef} />
       </div>
-      {error && <p className="mt-2 text-sm text-bad">{error}</p>}
-      <div className="mt-3 flex gap-2">
+      {error && <p className="mt-3 text-sm text-fail">{error}</p>}
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+        <label className="sr-only" htmlFor="chat-draft">
+          Your question
+        </label>
         <textarea
-          className={`h-20 resize-y ${input}`}
-          placeholder="Paste a form question, or ask to shorten / adjust the last answer"
+          id="chat-draft"
+          className="textarea min-h-20 w-full"
+          placeholder="Paste a form question, or ask to shorten or adjust the last answer. ⌘ Enter sends."
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send(draft);
           }}
         />
-        <button className={`self-end ${primary}`} disabled={busy || !draft.trim()} onClick={() => send(draft)}>
-          Send
+        <button className="btn btn--accent sm:self-end" disabled={busy || !draft.trim()} onClick={() => send(draft)}>
+          {busy ? "Writing…" : "Send"}
         </button>
       </div>
     </Card>
@@ -818,11 +1033,12 @@ function Chat({ run }: { run: Run }) {
 // ---------- Email ----------
 
 const EMAIL_LABELS: Record<string, string> = {
-  application: "Application email",
+  application: "Application",
   referral: "Referral request",
   "follow-up": "Follow-up",
-  "thank-you": "Post-interview thank-you",
+  "thank-you": "Thank-you",
 };
+const EMAIL_WORDS = 170;
 
 function Emails({ run }: { run: Run }) {
   const [emails, setEmails] = useState<DraftedEmail[]>(run.emails ?? []);
@@ -835,7 +1051,7 @@ function Emails({ run }: { run: Run }) {
     setBusy(true);
     setError("");
     try {
-      const res = await fetch(`/api/runs/${run.id}/email`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, notes }) });
+      const res = await post(`/api/runs/${run.id}/email`, { kind, notes });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       setEmails((e) => [...e, data]);
@@ -847,48 +1063,51 @@ function Emails({ run }: { run: Run }) {
   }
 
   return (
-    <>
-      <Card title="Draft an email">
-        <div className="grid gap-3 sm:grid-cols-[14rem_1fr]">
-          <label className="text-xs font-medium text-muted">
-            Type
-            <select className={`mt-1 ${input}`} value={kind} onChange={(e) => setKind(e.target.value)}>
-              {Object.entries(EMAIL_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </select>
+    <section className="flex flex-col gap-4">
+      <Card title="Emails">
+        <div className="flex flex-col gap-4">
+          <div role="group" aria-label="Email type" className="segmented self-start">
+            {Object.entries(EMAIL_LABELS).map(([k, v]) => (
+              <button key={k} aria-pressed={kind === k} onClick={() => setKind(k)}>
+                {v}
+              </button>
+            ))}
+          </div>
+          <label className="block">
+            <span className="field-label">Notes</span>
+            <input
+              className="input w-full"
+              placeholder="Recipient, what the posting asks the email to cover, what was discussed"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
           </label>
-          <label className="text-xs font-medium text-muted">
-            Notes (recipient, what the posting asks the email to cover, what was discussed)
-            <input className={`mt-1 ${input}`} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </label>
+          <button className="btn btn--primary self-start" disabled={busy} onClick={draft}>
+            {busy ? "Drafting…" : `Draft the ${EMAIL_LABELS[kind].toLowerCase()} email`}
+          </button>
+          {error && <p className="text-sm text-fail">{error}</p>}
         </div>
-        <button className={`mt-3 ${primary}`} disabled={busy} onClick={draft}>
-          {busy ? "Drafting…" : "Draft it"}
-        </button>
-        {error && <p className="mt-2 text-sm text-bad">{error}</p>}
       </Card>
       {[...emails].reverse().map((e) => (
-        <Card
-          key={e.createdAt}
-          title={`${EMAIL_LABELS[e.kind] ?? e.kind} · ${new Date(e.createdAt).toLocaleString()}`}
-          action={
-            <div className="flex gap-2">
+        <Card key={e.createdAt} className="p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="badge badge--primary">{EMAIL_LABELS[e.kind] ?? e.kind}</span>
+            <span className="mono text-xs text-muted">{new Date(e.createdAt).toLocaleString()}</span>
+          </div>
+          <p className="mt-3 font-semibold">{e.subject}</p>
+          <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap">{e.body}</p>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <LimitMeter used={wordCount(e.body)} limit={EMAIL_WORDS} unit="words" />
+            <span className="flex gap-1">
               <CopyButton text={`Subject: ${e.subject}\n\n${e.body}`} />
-              <a className={secondary} href={`mailto:?subject=${encodeURIComponent(e.subject)}&body=${encodeURIComponent(e.body)}`}>
+              <a className="btn btn--ghost" href={`mailto:?subject=${encodeURIComponent(e.subject)}&body=${encodeURIComponent(e.body)}`}>
                 Open in mail
               </a>
-            </div>
-          }
-        >
-          <p className="text-sm font-medium">Subject: {e.subject}</p>
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{e.body}</p>
-          <p className="mt-2 text-xs text-muted">{e.body.trim().split(/\s+/).length} words</p>
+            </span>
+          </div>
         </Card>
       ))}
-    </>
+    </section>
   );
 }
 
@@ -900,6 +1119,12 @@ const CHANNEL_LABELS: Record<string, string> = {
   email: "Email",
 };
 const CHANNEL_LIMITS: Record<string, number> = { "linkedin-connect": 200, "linkedin-message": 600 };
+const OUTREACH_EMAIL_WORDS = 130;
+const TARGETS: [string, string][] = [
+  ["founder", "Founder"],
+  ["engineer", "Engineer"],
+  ["recruiter", "Recruiter"],
+];
 
 function Outreach({ run }: { run: Run }) {
   const [sequences, setSequences] = useState<DraftedSequence[]>(run.outreach ?? []);
@@ -913,7 +1138,7 @@ function Outreach({ run }: { run: Run }) {
     setBusy(true);
     setError("");
     try {
-      const res = await fetch(`/api/runs/${run.id}/outreach`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target, notes }) });
+      const res = await post(`/api/runs/${run.id}/outreach`, { target, notes });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       setSequences((s) => [...s, data]);
@@ -925,86 +1150,65 @@ function Outreach({ run }: { run: Run }) {
   }
 
   return (
-    <>
-      <Card title="Outreach sequence: LinkedIn + cold email">
-        <p className="mb-3 text-xs text-muted">
-          A 10-day sequence to a real person at the company, alongside the application. Founder names come from YC job imports or company research
-          (Project studio); run the research first for sharper messages.
+    <section className="flex flex-col gap-4">
+      <Card title="Outreach sequence">
+        <p className="-mt-2 mb-4 text-sm text-muted">
+          A 10-day LinkedIn and email sequence to a real person at the company, alongside the application. Run the company research first for
+          sharper messages.
         </p>
-        <div className="grid gap-3 sm:grid-cols-[14rem_1fr]">
-          <label className="text-xs font-medium text-muted">
-            Who to reach
-            <select className={`mt-1 ${input}`} value={target} onChange={(e) => setTarget(e.target.value)}>
-              <option value="founder">Founder / CEO</option>
-              <option value="engineer">Engineer on the team</option>
-              <option value="recruiter">Recruiter / hiring manager</option>
-            </select>
+        <div className="flex flex-col gap-4">
+          <div role="group" aria-label="Who to reach" className="segmented self-start">
+            {TARGETS.map(([k, v]) => (
+              <button key={k} aria-pressed={target === k} onClick={() => setTarget(k)}>
+                {v}
+              </button>
+            ))}
+          </div>
+          <label className="block">
+            <span className="field-label">Notes</span>
+            <input className="input w-full" placeholder="A name, a mutual connection, a project you built for them" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </label>
-          <label className="text-xs font-medium text-muted">
-            Notes (a name, a mutual connection, a project you built for them)
-            <input className={`mt-1 ${input}`} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </label>
+          <button className="btn btn--accent self-start" disabled={busy} onClick={draft}>
+            {busy ? "Drafting…" : sequences.length ? "Draft another sequence" : "Draft the sequence"}
+          </button>
+          {error && <p className="text-sm text-fail">{error}</p>}
         </div>
-        <button className={`mt-3 ${primary}`} disabled={busy} onClick={draft}>
-          {busy ? "Drafting…" : sequences.length ? "Draft another sequence" : "Draft the sequence"}
-        </button>
-        {error && <p className="mt-2 text-sm text-bad">{error}</p>}
       </Card>
       {latest && (
-        <Card title={`Sequence to the ${latest.target} · ${new Date(latest.createdAt).toLocaleString()}`}>
-          <ol className="relative space-y-4 border-l border-border pl-5">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2>To the {latest.target}</h2>
+            <span className="mono text-xs text-muted">{new Date(latest.createdAt).toLocaleString()}</span>
+          </div>
+          <ol className="flex flex-col gap-4">
             {latest.steps.map((s, i) => {
               const limit = CHANNEL_LIMITS[s.channel];
-              const size = limit ? `${s.body.length}/${limit} chars` : `${s.body.trim().split(/\s+/).length} words`;
-              const over = limit ? s.body.length > limit : false;
               return (
-                <li key={i}>
-                  <span className="absolute -left-1.5 mt-1.5 h-3 w-3 rounded-full border border-border bg-surface" />
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="font-semibold">Day {s.day}</span>
-                    <span className="rounded border border-border px-1.5 py-0.5">{CHANNEL_LABELS[s.channel] ?? s.channel}</span>
-                    <span className="text-muted">to {s.recipient}</span>
-                    <span className="text-muted">· {s.sendIf}</span>
-                    <span className={`ml-auto ${over ? "text-bad" : "text-muted"}`}>{size}</span>
-                    <CopyButton text={s.subject ? `Subject: ${s.subject}\n\n${s.body}` : s.body} />
+                <li key={i} className="grid grid-cols-[3.5rem_1fr] gap-3">
+                  <span className="eyebrow pt-5">Day {s.day}</span>
+                  <div className="card min-w-0 p-5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="badge badge--neutral">{CHANNEL_LABELS[s.channel] ?? s.channel}</span>
+                      <span className="text-sm text-muted">to {s.recipient}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted">Send if {s.sendIf.replace(/^if\s+/i, "")}</p>
+                    {s.subject && <p className="mt-3 font-semibold">{s.subject}</p>}
+                    <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap">{s.body}</p>
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                      {limit ? (
+                        <LimitMeter used={s.body.length} limit={limit} unit="chars" />
+                      ) : (
+                        <LimitMeter used={wordCount(s.body)} limit={OUTREACH_EMAIL_WORDS} unit="words" />
+                      )}
+                      <CopyButton text={s.subject ? `Subject: ${s.subject}\n\n${s.body}` : s.body} />
+                    </div>
                   </div>
-                  {s.subject && <p className="mt-1 text-sm font-medium">Subject: {s.subject}</p>}
-                  <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{s.body}</p>
                 </li>
               );
             })}
           </ol>
-        </Card>
+        </div>
       )}
-    </>
-  );
-}
-
-function DetailsCard({ details: d }: { details: JobDetails }) {
-  const rows: [string, string][] = [
-    ["Location", d.location],
-    ["Salary", d.salary],
-    ["Experience", d.experience],
-    ["How to apply", d.howToApply],
-    ["Email it asks for", d.emailAsk],
-    ["Stack", d.stack.join(", ")],
-    ["Must have", d.mustHave.join("; ")],
-    ["Nice to have", d.niceToHave.join("; ")],
-    ["Form questions", d.formQuestions.join(" | ")],
-  ];
-  return (
-    <Card title={`${d.company} · ${d.role}`}>
-      <dl className="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-1 text-xs">
-        {rows
-          .filter(([, v]) => v)
-          .map(([k, v]) => (
-            <div key={k} className="contents">
-              <dt className="text-muted">{k}</dt>
-              <dd>{v}</dd>
-            </div>
-          ))}
-      </dl>
-      {d.redFlags.length > 0 && <p className="mt-2 text-xs text-warn">Fit risks: {d.redFlags.join("; ")}</p>}
-    </Card>
+    </section>
   );
 }
