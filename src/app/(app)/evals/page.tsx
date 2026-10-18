@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { EvalResult, Status } from "@/lib/evals";
 import { Chevron, Notice, PageHeader } from "@/app/ui";
+import { CountUp } from "@/components/motion";
 
 interface Row {
   id: string;
@@ -95,13 +96,13 @@ export default function EvalsPage() {
             </span>
           </div>
           <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]">
-            {checks.map(([k, v]) => {
+            {checks.map(([k, v], i) => {
               const rate = v.total ? v.pass / v.total : 0;
               return (
-                <div key={k} className="card flex flex-col gap-2 p-5">
+                <div key={k} className="card hp-enter flex flex-col gap-2 p-5" style={{ "--i": i } as React.CSSProperties}>
                   <p className="kpi-label mono">{k}</p>
                   <p className="kpi-value">
-                    {Math.round(rate * 100)}
+                    <CountUp to={Math.round(rate * 100)} duration={900} />
                     <span className="text-lg text-muted">%</span>
                   </p>
                   <div className="progress" role="img" aria-label={`${v.pass} of ${v.total} passed`}>

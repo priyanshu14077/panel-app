@@ -18,7 +18,7 @@ It never invents a fact. A resume line that needs something it doesn't know is h
 
 ## Walkthrough
 
-One job, from posting to tracked application. Screenshots use demo data: company, people and contact details are placeholders, and every answer, draft and verdict shown is real model output.
+One job, from posting to tracked application, in the app's dark Ember theme. Screenshots use demo data: company, people and contact details are placeholders, and every answer, draft and verdict shown is real model output.
 
 **1. Start a run.** Pick a resume (yours, or one the panel already improved), paste a job link or posting, and choose whether to research the company and draft outreach.
 
@@ -75,6 +75,7 @@ One job, from posting to tracked application. Screenshots use demo data: company
 - [Demo](#demo)
 - [Walkthrough](#walkthrough)
 - [Features](#features)
+- [Design](#design)
 - [Architecture](#architecture)
 - [Requirements](#requirements)
 - [Setup](#setup)
@@ -91,6 +92,10 @@ One job, from posting to tracked application. Screenshots use demo data: company
 ---
 
 ## Features
+
+**Landing page**
+
+- `/` introduces the app before you open it: a WebGL hero where seven resume sheets turn liquid under the cursor and settle back, the demo film at full width, an example panel whose verdicts land one by one, a tour of the real screens, the run pipeline, a feature bento with small live demos, measured numbers and an FAQ. A floating nav links the four app areas once the hero scrolls away.
 
 **Workspace**
 
@@ -129,6 +134,17 @@ One job, from posting to tracked application. Screenshots use demo data: company
 
 - Deterministic checks on every run plus an optional Claude fact-checker. See [Evals](#evals).
 - Every model call is priced and grouped by feature and by run.
+
+---
+
+## Design
+
+Every page uses one dark theme, **Ember**: a warm near-black ground lit tangerine, with plum as a supporting colour and a muted berry red kept for REJECT, failed evals and unsupported lines. The rules live in [DESIGN.md](DESIGN.md); the tokens live in `src/app/tokens.css`, and components read only semantic tokens, never a hex value.
+
+- **Type**: [Mona Sans](https://github.com/github/mona-sans) at two widths, expanded and heavy for headings and big numbers, normal for text, with [Martian Mono](https://github.com/evilmartians/mono) for figures. A heading lights one phrase in a tangerine gradient ("Everything after **the verdict**"); on app pages the headline figures take it instead.
+- **Glow** marks only what is live or won: the active tab, the run button, PASS, a draggable card, a due-today chip.
+- **Motion** answers something that just happened: verdicts pop in as they stream, board cards rise in, KPI figures count up, bars measure from zero, the drawer slides in. On the landing page each animation starts when its section scrolls into view. `prefers-reduced-motion` turns all of it off.
+- **Screens on the landing page** are captured from demo data only, never from real runs, because the page is public.
 
 ---
 
@@ -363,7 +379,7 @@ The same folder layout is used by the `/hiring-panel` Claude Code skill, so runs
 ## Using it
 
 1. **Build the knowledge base** (sidebar, once). One cheap call per repo; later refreshes only re-read repos you pushed to since.
-2. **Paste a job link** into *Job link* and click **Import the link and run everything**. Tick the boxes to also research the company and draft outreach.
+2. Open **Workspace** (or **Start a run** on the landing page), **paste a job link** into *Job link* and click **Import the link and run everything**. Tick the boxes to also research the company and draft outreach.
 3. **Read the panel**, then answer the **open questions** to unlock the lines held back from the PDF.
 4. **Run the grounding judge** on the Evals page before sending a resume.
 5. **Project studio**: research the company, pick an idea, build it, then add its real details to get a rebuilt resume.
@@ -440,10 +456,15 @@ src/
 │   │   └── usage/             cost ledger
 │   ├── nav.tsx                left rail: tabs and recent runs
 │   ├── tokens.css, ui.tsx     design tokens and shared UI pieces (see DESIGN.md)
+│   ├── landing.css            landing page styles and motion
+│   ├── ember-app.css          the app pages in the Ember theme, and their motion
+│   ├── icon.svg, favicon.ico, apple-icon.png   the brand mark
 │   ├── knowledge-panel.tsx    build and curate the knowledge base
 │   └── api/                   route handlers; long jobs stream NDJSON events
-├── components/ui/
-│   └── liquid-sculpture-hero.tsx   WebGL2 particle hero for the landing page
+├── components/
+│   ├── ui/liquid-sculpture-hero.tsx   WebGL2 particle hero for the landing page
+│   ├── landing/               landing sections: panel demo, screen tour, pipeline, bento, FAQ
+│   └── motion.tsx             useInView and CountUp, shared by the landing and the app
 ├── lib/
 │   ├── claude.ts              model tiers, fallbacks, structured output, web research, chat
 │   ├── pipeline.ts            the panel, rebuild, PDF, follow-up actions, autopilot, board
@@ -455,8 +476,9 @@ src/
 │   ├── knowledge/             GitHub and portfolio collectors, project cards, shortlist
 │   ├── usage.ts               pricing and the usage ledger
 │   └── files.ts, paths.ts     profile, resumes, saved jobs, data folders
+public/                        hero art, demo film, landing screenshots
 templates/                     Jake's Resume (MIT)
-scripts/                       offline and live check scripts
+scripts/                       offline and live check scripts; hero-art/ and brand/ render the landing art and icons
 ```
 
 Structured-output schemas compile into a grammar on Anthropic's side, and a large nested schema is rejected ("compiled grammar is too large"). The rebuild is therefore split across several small schemas. Run `scripts/schema-check.mts` after changing one.
@@ -472,6 +494,8 @@ Structured-output schemas compile into a grammar on Anthropic's side, and a larg
 | `npx tsx scripts/collect-check.mts [portfolio-url]` | no | exercises the GitHub and portfolio collectors |
 | `JOB_HUNT_ROOT=<scratch> npx tsx scripts/archive-check.mts <run.json>` | no | compiles a run's resume twice into one folder and shows the archived copy |
 | `npx tsx scripts/schema-check.mts` | yes (export the key first) | confirms every schema compiles on the tier it runs on |
+| `scripts/hero-art/render.sh` | no | renders the landing hero's particle images from `art.html` (needs Chrome) |
+| `scripts/brand/render-icons.sh` | no | renders `favicon.ico` and `apple-icon.png` from `src/app/icon.svg` (needs Chrome) |
 
 ---
 
@@ -487,5 +511,5 @@ The app is built to run locally. It reads and writes your data folder, shells ou
 - The seven-reviewer panel follows the [hiring-panel skill](https://github.com/alexyc9381/hiring-panel-skill) by Alex Chen, MIT.
 - Built with [Next.js](https://nextjs.org) and the [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript).
 - Landing hero: the liquid sculpture hero by [Guglielmo Giannattasio](https://guglielmogiannattasio.it).
-- App type: [Bricolage Grotesque](https://github.com/ateliertriay/bricolage) and [Manrope](https://github.com/sharanda/manrope), both SIL Open Font License.
+- App type: [Mona Sans](https://github.com/github/mona-sans) and [Martian Mono](https://github.com/evilmartians/mono), both SIL Open Font License.
 - Demo video type: [Instrument Serif](https://github.com/Instrument/instrument-serif) and [Geist](https://github.com/vercel/geist-font), both SIL Open Font License.

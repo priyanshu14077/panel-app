@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { UsageRecord } from "@/lib/usage";
 import { Card, Chevron, PageHeader } from "@/app/ui";
+import { CountUp } from "@/components/motion";
 
 interface Totals {
   calls: number;
@@ -98,15 +99,17 @@ export default function UsagePage() {
       {u && (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              ["Total spend", usd(u.total.cost), true],
-              ["Claude calls", String(u.total.calls), false],
-              ["Tokens in / out", `${k(u.total.inputTokens)} / ${k(u.total.outputTokens)}`, false],
-              ["Web searches", String(u.total.webSearches), false],
-            ].map(([label, value, cost]) => (
-              <div key={label as string} className="card p-5">
+            {(
+              [
+                ["Total spend", <CountUp key="c" to={u.total.cost} decimals={2} prefix="$" />, true],
+                ["Claude calls", <CountUp key="n" to={u.total.calls} />, false],
+                ["Tokens in / out", `${k(u.total.inputTokens)} / ${k(u.total.outputTokens)}`, false],
+                ["Web searches", <CountUp key="w" to={u.total.webSearches} />, false],
+              ] as [string, React.ReactNode, boolean][]
+            ).map(([label, value, cost], i) => (
+              <div key={label} className="card hp-enter p-5" style={{ "--i": i } as React.CSSProperties}>
                 <p className="kpi-label">{label}</p>
-                <p className={`kpi-value mono mt-2 ${cost ? "kpi-value--cost" : ""}`}>{value}</p>
+                <p className={`kpi-value mono mt-2 whitespace-nowrap ${cost ? "kpi-value--cost" : ""} ${label === "Tokens in / out" ? "text-[clamp(18px,1.7vw,26px)]" : ""}`}>{value}</p>
                 {label === "Tokens in / out" && cached > 0 && <p className="mono mt-1 text-xs text-muted">{k(cached)} read from cache</p>}
               </div>
             ))}
@@ -116,7 +119,7 @@ export default function UsagePage() {
             <div className="flex flex-col gap-3">
               <div className="flex h-3 overflow-hidden rounded-full bg-track" role="img" aria-label="Total spend split by tier">
                 {byTier.map((t) => (
-                  <span key={t.id} className={t.series} style={{ width: `${(t.cost / (u.total.cost || 1)) * 100}%` }} />
+                  <span key={t.id} className={`hp-grow ${t.series}`} style={{ width: `${(t.cost / (u.total.cost || 1)) * 100}%` }} />
                 ))}
               </div>
               <ul className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
@@ -148,7 +151,7 @@ export default function UsagePage() {
                       <td>
                         <div className="h-2 rounded-full bg-track">
                           <span
-                            className={`block h-2 rounded-full ${TIERS.find((t) => t.id === tierOf(a.action))!.series}`}
+                            className={`hp-grow block h-2 rounded-full ${TIERS.find((t) => t.id === tierOf(a.action))!.series}`}
                             style={{ width: `${Math.max((a.cost / top) * 100, 1)}%` }}
                           />
                         </div>

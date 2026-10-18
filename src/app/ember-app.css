@@ -1,0 +1,83 @@
+/* The app pages (workspace, board, evals, usage) in the Ember theme. In the
+   components layer, so a utility on an element still wins. Glow marks what is
+   live or won: the active tab, the run button, PASS, a card you can drag.
+   Motion answers something that just happened (a verdict landing, a card
+   appearing, a bar measuring) and stops under prefers-reduced-motion. */
+
+/* ---------- Ground -------------------------------------------------------- */
+/* Text and ground are set here, not inherited from <body>, which keeps the
+   light theme's values. */
+.ember { background: var(--color-bg); color: var(--color-text); }
+.ember-app { position: relative; isolation: isolate; }
+/* A faint, slow glow behind the content, so the dark ground isn't flat. */
+.ember-app::before {
+  content: ""; position: fixed; inset: -10% -10% auto auto; z-index: -1; width: 70vw; height: 70vh; pointer-events: none;
+  background: radial-gradient(closest-side, var(--aurora-2), transparent), radial-gradient(40% 50% at 20% 60%, var(--aurora-3), transparent 70%);
+  filter: blur(40px); opacity: .7; animation: hp-drift 22s ease-in-out infinite alternate;
+}
+.ember-app aside:first-of-type { background: radial-gradient(120% 40% at 0% 0%, var(--color-accent-tint), transparent 70%), var(--color-bg-sidebar); }
+
+/* ---------- Lit controls -------------------------------------------------- */
+.ember .btn--accent { background: var(--gradient-accent); box-shadow: var(--glow-accent); transition: box-shadow .25s, transform .25s; }
+.ember .btn--accent:hover:not(:disabled) { background: var(--gradient-accent); box-shadow: var(--glow-strong); transform: translateY(-1px); }
+.ember .btn--primary { box-shadow: 0 0 0 1px var(--ring-glow); transition: box-shadow .25s, background .25s; }
+.ember .btn--primary:hover:not(:disabled) { box-shadow: var(--glow-accent); }
+.ember .btn:not(.btn--accent, .btn--primary, .btn--ghost):hover:not(:disabled) { border-color: var(--color-primary); }
+.ember .nav-tab { transition: background .2s, box-shadow .25s, color .2s; }
+.ember .nav-tab[aria-current="page"] { background: var(--gradient-accent); color: var(--color-text-on-accent); box-shadow: var(--glow-accent); }
+.ember .segmented > button { transition: background .2s, color .2s, box-shadow .25s; }
+.ember .segmented > button[aria-pressed="true"], .ember .segmented > button[aria-selected="true"] {
+  background: var(--gradient-accent); color: var(--color-text-on-accent); box-shadow: var(--glow-accent); }
+.ember .brand-mark { background: var(--gradient-accent); box-shadow: var(--glow-accent); }
+.ember .brand-mark::after { background: var(--color-text-on-accent); }
+.ember .input:focus, .ember .textarea:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-accent-tint), var(--glow-soft); }
+.ember .input, .ember .textarea { transition: border-color .2s, box-shadow .2s; }
+
+/* ---------- Verdicts and status ------------------------------------------- */
+.ember .verdict--pass { box-shadow: var(--glow-accent); }
+.ember .verdict { animation: hp-pop .4s cubic-bezier(.2,1.5,.4,1) both; }
+.ember .verdict--pending { animation: hp-pulse 1.4s ease-in-out infinite; }
+.ember .verdict-arrow { text-shadow: var(--glow-text); }
+.ember .due--today { box-shadow: var(--glow-accent); animation: hp-ring 2.4s ease-out infinite; }
+.ember .kpi-value--cost { text-shadow: var(--glow-text); }
+.ember .heldback { animation: hp-ring 2.4s ease-out infinite; }
+
+/* ---------- Cards --------------------------------------------------------- */
+.ember .card { transition: border-color .25s, box-shadow .3s; }
+.ember .card--sunken { background: radial-gradient(120% 120% at 100% 0%, var(--color-accent-tint), transparent 60%), var(--color-surface-sunken); }
+.ember .reviewer, .ember .mistake, .ember .hp-enter { animation: hp-rise .45s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(var(--i, 0) * 60ms); }
+.ember .reviewer:hover { border-color: var(--color-primary); box-shadow: var(--glow-soft); }
+
+/* ---------- Board --------------------------------------------------------- */
+.ember .column { background: var(--color-surface-sunken); box-shadow: inset 0 0 0 1px var(--color-border-subtle); transition: box-shadow .25s; }
+.ember .column__head { border-top-color: var(--_col); }
+.ember .column__count { color: var(--color-text-on-accent); box-shadow: 0 0 14px -2px var(--_col); }
+.ember .column[data-drop] { box-shadow: inset 0 0 0 2px var(--color-primary), var(--glow-soft); }
+.ember .kanban-card { cursor: grab; animation: hp-rise .45s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(var(--i, 0) * 45ms);
+                      transition: border-color .2s, box-shadow .25s, transform .25s; }
+.ember .kanban-card:hover { border-color: var(--color-primary); box-shadow: var(--glow-soft); transform: translateY(-2px); }
+.ember .kanban-card:active { cursor: grabbing; }
+.ember .hp-drawer { animation: hp-slide .35s cubic-bezier(.2,.7,.2,1) both; }
+.ember .hp-scrim { animation: hp-fade .25s ease-out both; }
+
+/* ---------- Charts and meters --------------------------------------------- */
+/* Bars measure up from zero when they first appear. */
+.ember .progress > span, .ember .limit-bar > span, .ember .hp-grow { animation: hp-grow 1.1s cubic-bezier(.3,.7,.2,1) both; animation-delay: calc(var(--i, 0) * 70ms); }
+.ember .progress > span { box-shadow: 0 0 10px -2px currentColor; }
+.ember .series-1 { box-shadow: 0 0 12px -3px var(--chart-1); }
+
+/* ---------- Tabs and panels ----------------------------------------------- */
+.ember .hp-fade { animation: hp-fade .3s ease-out both; }
+
+/* ---------- Keyframes ----------------------------------------------------- */
+@keyframes hp-drift { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(-6%, 4%, 0) scale(1.1); } }
+@keyframes hp-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes hp-pop { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
+@keyframes hp-grow { from { width: 0; } }
+@keyframes hp-fade { from { opacity: 0; } }
+@keyframes hp-slide { from { transform: translateX(40px); opacity: 0; } }
+@keyframes hp-ring { 0% { box-shadow: 0 0 0 0 var(--ring-glow); } 70%, 100% { box-shadow: 0 0 0 7px transparent; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ember-app *, .ember-app *::before, .ember-app *::after, .ember-app::before { animation: none !important; transition: none !important; }
+}

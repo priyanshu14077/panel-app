@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, Manrope } from "next/font/google";
+import { Martian_Mono, Mona_Sans } from "next/font/google";
 import "./globals.css";
 
-const display = Bricolage_Grotesque({
-  variable: "--font-bricolage",
+// One family at two widths: expanded and heavy for display, normal for text.
+const sans = Mona_Sans({
+  variable: "--font-mona",
   subsets: ["latin"],
+  axes: ["wdth"],
 });
 
-const body = Manrope({
-  variable: "--font-manrope",
+const mono = Martian_Mono({
+  variable: "--font-martian",
   subsets: ["latin"],
+  axes: ["wdth"],
 });
 
 export const metadata: Metadata = {
@@ -19,7 +22,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${display.variable} ${body.variable} antialiased`}>
+    <html lang="en" className={`${sans.variable} ${mono.variable} antialiased`}>
       <body className="min-h-dvh">{children}</body>
     </html>
   );

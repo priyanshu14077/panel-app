@@ -1,6 +1,10 @@
 @import "tailwindcss";
 /* In the base layer, so a utility on an element can still override a recipe. */
 @import "./tokens.css" layer(base);
+/* Unlayered: the landing restyles the hero, whose own styles are unlayered too. */
+@import "./landing.css";
+/* The app pages in the Ember theme; in the components layer so utilities still win. */
+@import "./ember-app.css" layer(components);
 
 /* Tailwind reads the semantic tokens; its own palette is switched off so no
    stray hex can reach a component. Names that match a token resolve to it:
@@ -76,27 +80,23 @@
   .judge-line--partly { --_support: var(--eval-partly-supported); }
   .judge-line--unsupported { --_support: var(--eval-unsupported); }
 
+  /* Display type is Mona Sans expanded wherever it appears, not only on h1-h3. */
+  .font-display { font-variation-settings: "wdth" var(--display-wdth); }
+  .cost, .limit, .mistake__quote { font-variation-settings: "wdth" var(--mono-wdth); }
+
+  /* Two-tone headings: the phrase that matters, in tangerine. On Ember it is a
+     glowing gradient; elsewhere plain accent text. */
+  .hl { color: var(--color-accent-text); }
+  .ember .hl { background: var(--gradient-accent); -webkit-background-clip: text; background-clip: text;
+               -webkit-text-fill-color: transparent; filter: drop-shadow(0 0 22px var(--aurora-2)); }
+  /* Headline figures take the same treatment; their small units stay muted. */
+  .ember .kpi-value { background: var(--gradient-accent); -webkit-background-clip: text; background-clip: text;
+                      -webkit-text-fill-color: transparent; filter: drop-shadow(0 0 18px var(--aurora-2)); }
+  .ember .kpi-value .text-muted { -webkit-text-fill-color: var(--color-text-muted); }
+
   /* Brand mark: plum square, tangerine dot. */
   .brand-mark { position: relative; width: 28px; height: 28px; border-radius: var(--radius-sm); background: var(--color-primary); flex: none; }
   .brand-mark::after { content: ""; position: absolute; right: 6px; bottom: 6px; width: 8px; height: 8px;
                        border-radius: var(--radius-pill); background: var(--color-accent); }
 }
 
-/* ---------- Landing page ------------------------------------------------- */
-/* Unlayered, like the hero's own styles, so these win over them. */
-.landing .sh-btn { background: var(--color-accent); color: var(--color-text-on-accent); font-weight: 700; min-height: var(--control-height); }
-.landing .sh-btn:hover { background: var(--color-accent-hover); color: var(--color-text-on-accent); }
-.landing .sh-txt { color: var(--color-text); }
-.landing .sh-h1 { font-weight: 700; }
-.landing .sh-body { opacity: 1; color: var(--color-text-muted); }
-.landing .sh-link { display: inline-flex; align-items: center; min-height: var(--control-height); padding: 0 var(--space-2);
-                    opacity: 1; color: var(--color-text-muted); font-size: var(--text-md); font-weight: 600; }
-.landing .sh-link:hover { color: var(--color-text); }
-.landing .sh-brand { font-size: var(--text-lg); font-weight: 700; }
-.landing .sh-root a:focus-visible { outline-color: var(--color-focus); }
-/* The hero hides nav links on phones; the landing keeps all four, on their own row. */
-@media (max-width: 767px) {
-  .landing .sh-nav { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
-  .landing .sh-links { flex-wrap: wrap; gap: 0 var(--space-1); margin-left: calc(var(--space-2) * -1); }
-  .landing .sh-links li:not(.sh-keep) { display: block; }
-}

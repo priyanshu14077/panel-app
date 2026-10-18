@@ -8,6 +8,7 @@ import type { ResumeOption } from "@/lib/files";
 import { readNdjson } from "@/lib/read-ndjson";
 import { KnowledgePanel } from "@/app/knowledge-panel";
 import { RUNS_CHANGED } from "@/app/nav";
+import { CountUp } from "@/components/motion";
 import { Card, Chevron, CopyButton, LimitMeter, Notice, PageHeader, Verdict, WithGaps, isWin, wordCount } from "@/app/ui";
 
 interface Sources {
@@ -220,49 +221,52 @@ function Workspace() {
           </div>
           {error && <Notice tone="fail">{error}</Notice>}
 
-          {tab === "panel" && (
-            <TwoColumn
-              side={showing.pdf && showing.id ? <PdfPanel runId={showing.id} pdf={showing.pdf} version={pdfVersion} /> : showing.details && <DetailsCard details={showing.details} />}
-            >
-              <Reviews reviews={showing.reviews ?? []} busy={busy && !showing.synthesis} rescreens={showing.rescreens ?? []} />
-              {showing.synthesis && (
-                <>
-                  <Mistakes synthesis={showing.synthesis} />
-                  {showing.synthesis.questions.length > 0 && (
-                    <Questions
-                      key={showing.synthesis.questions.map((q) => q.id).join()}
-                      synthesis={showing.synthesis}
-                      busy={busy}
-                      onSubmit={(answers) => act("answers", { answers })}
-                    />
-                  )}
-                  <IdeaGrid title="Projects to build" ideas={showing.synthesis.projects} />
-                </>
-              )}
-              {showing.pdf && showing.details && <DetailsCard details={showing.details} />}
-            </TwoColumn>
-          )}
+          {/* Keyed by tab so each switch fades the new panel in. */}
+          <div key={tab} className="hp-fade flex flex-col gap-6">
+            {tab === "panel" && (
+              <TwoColumn
+                side={showing.pdf && showing.id ? <PdfPanel runId={showing.id} pdf={showing.pdf} version={pdfVersion} /> : showing.details && <DetailsCard details={showing.details} />}
+              >
+                <Reviews reviews={showing.reviews ?? []} busy={busy && !showing.synthesis} rescreens={showing.rescreens ?? []} />
+                {showing.synthesis && (
+                  <>
+                    <Mistakes synthesis={showing.synthesis} />
+                    {showing.synthesis.questions.length > 0 && (
+                      <Questions
+                        key={showing.synthesis.questions.map((q) => q.id).join()}
+                        synthesis={showing.synthesis}
+                        busy={busy}
+                        onSubmit={(answers) => act("answers", { answers })}
+                      />
+                    )}
+                    <IdeaGrid title="Projects to build" ideas={showing.synthesis.projects} />
+                  </>
+                )}
+                {showing.pdf && showing.details && <DetailsCard details={showing.details} />}
+              </TwoColumn>
+            )}
 
-          {ready && tab === "studio" && (
-            <Studio
-              run={showing as Run}
-              busy={busy}
-              pdfVersion={pdfVersion}
-              onResearch={() => act("company")}
-              onAddProject={(p) => act("projects", p)}
-            />
-          )}
-          {ready && tab === "qa" && (
-            <TwoColumn side={showing.details && <DetailsCard details={showing.details} />}>
-              <Chat key={showing.id} run={showing as Run} />
-            </TwoColumn>
-          )}
-          {ready && tab === "email" && (
-            <TwoColumn side={showing.details && <DetailsCard details={showing.details} />}>
-              <Outreach key={`o-${showing.id}`} run={showing as Run} />
-              <Emails key={showing.id} run={showing as Run} />
-            </TwoColumn>
-          )}
+            {ready && tab === "studio" && (
+              <Studio
+                run={showing as Run}
+                busy={busy}
+                pdfVersion={pdfVersion}
+                onResearch={() => act("company")}
+                onAddProject={(p) => act("projects", p)}
+              />
+            )}
+            {ready && tab === "qa" && (
+              <TwoColumn side={showing.details && <DetailsCard details={showing.details} />}>
+                <Chat key={showing.id} run={showing as Run} />
+              </TwoColumn>
+            )}
+            {ready && tab === "email" && (
+              <TwoColumn side={showing.details && <DetailsCard details={showing.details} />}>
+                <Outreach key={`o-${showing.id}`} run={showing as Run} />
+                <Emails key={showing.id} run={showing as Run} />
+              </TwoColumn>
+            )}
+          </div>
         </>
       )}
     </main>
@@ -499,20 +503,20 @@ function StatStrip({ run, busy }: { run: Partial<Run>; busy: boolean }) {
       </Stat>
       <Stat label="Readers who would advance it">
         <p className="kpi-value">
-          {yes}
+          <CountUp to={yes} duration={700} />
           <span className="text-lg text-muted"> / {readers.length || 6}</span>
         </p>
         <div className="mt-2 flex gap-1" aria-hidden>
           {readers.map((r) => (
-            <span key={r.id} className={`h-1.5 w-5 rounded-full ${isWin(r.verdict, true) ? "verdict--pass" : "verdict--reject"}`} />
+            <span key={r.id} className={`hp-enter h-1.5 w-5 rounded-full ${isWin(r.verdict, true) ? "verdict--pass" : "verdict--reject"}`} />
           ))}
         </div>
       </Stat>
       <Stat label="Mistakes found">
-        <p className="kpi-value">{s ? s.mistakes.length : "–"}</p>
+        <p className="kpi-value">{s ? <CountUp to={s.mistakes.length} duration={700} /> : "–"}</p>
       </Stat>
       <Stat label="Open questions">
-        <p className="kpi-value">{held ?? "–"}</p>
+        <p className="kpi-value">{held === null ? "–" : <CountUp to={held} duration={700} />}</p>
         {held ? <p className="text-xs text-accent-text">lines held back from the PDF</p> : null}
       </Stat>
     </section>
@@ -588,7 +592,7 @@ function Mistakes({ synthesis }: { synthesis: Synthesis }) {
     <Card title={`What is wrong, worst first`} action={<span className="mono text-sm text-muted">{n} found</span>}>
       <ol className="flex flex-col gap-5">
         {synthesis.mistakes.map((m, i) => (
-          <li key={i} className={`mistake ${severity(i)}`}>
+          <li key={i} className={`mistake ${severity(i)}`} style={{ "--i": i } as React.CSSProperties}>
             <span className="mistake__bar" aria-hidden />
             <div className="flex min-w-0 flex-col gap-2">
               <p className="mistake__quote break-words">{m.quote}</p>
@@ -610,8 +614,8 @@ function IdeaGrid({ title, ideas, onUse }: { title: string; ideas: ProjectIdea[]
         <p className="mt-1 text-sm text-muted">Build one, then add it in Project studio. It goes on the resume once you have given its real details.</p>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        {ideas.map((p) => (
-          <details key={p.title} className="card p-5">
+        {ideas.map((p, i) => (
+          <details key={p.title} className="card hp-enter p-5" style={{ "--i": i } as React.CSSProperties}>
             <summary className="flex flex-col gap-3">
               <span className="flex items-start justify-between gap-3">
                 <h3 className="text-lg">{p.title}</h3>

@@ -141,11 +141,13 @@
   /* Focus */
   --color-focus: var(--tangerine-600);
 
-  /* Typography. --font-bricolage and --font-manrope are set by next/font on
-     <html>; the names after them are fallbacks. */
-  --font-display: var(--font-bricolage), "Bricolage Grotesque", var(--font-manrope), system-ui, sans-serif;
-  --font-body:    var(--font-manrope), "Manrope", system-ui, sans-serif;
-  --font-mono:    ui-monospace, "SF Mono", Menlo, Consolas, monospace; /* cost figures, token counts, resume lines */
+  /* Typography. --font-mona and --font-martian are set by next/font on <html>.
+     Display is Mona Sans expanded and heavy; text is the same family at
+     normal width; figures are Martian Mono, slightly condensed. */
+  --font-display: var(--font-mona), "Mona Sans", system-ui, sans-serif;
+  --font-body:    var(--font-mona), "Mona Sans", system-ui, sans-serif;
+  --font-mono:    var(--font-martian), "Martian Mono", ui-monospace, Menlo, monospace; /* cost figures, token counts, resume lines */
+  --display-wdth: 125; --display-weight: 850; --mono-wdth: 87.5;
   --text-xs: 12px; --text-sm: 13px; --text-md: 14px; --text-lg: 18px;
   --text-xl: 28px; --text-2xl: 32px;
   --leading: 1.45; --tracking-tight: -0.02em; --tracking-caps: 0.06em;
@@ -248,11 +250,13 @@
 html { background: var(--color-bg); }
 body { margin: 0; background: var(--color-bg); color: var(--color-text);
        font-family: var(--font-body); font-size: var(--text-md); line-height: var(--leading); }
-h1, h2, h3 { font-family: var(--font-display); margin: 0; letter-spacing: var(--tracking-tight); }
-h1 { font-size: var(--text-xl); font-weight: 700; }
-h2 { font-size: var(--text-lg); font-weight: 600; letter-spacing: 0; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; letter-spacing: var(--tracking-tight);
+             font-variation-settings: "wdth" var(--display-wdth); font-weight: var(--display-weight); }
+h1 { font-size: var(--text-xl); }
+h2 { font-size: var(--text-lg); font-weight: 750; letter-spacing: -.01em; }
+h3 { font-weight: 700; font-variation-settings: "wdth" 112; }
 a { color: var(--color-link); } a:hover { color: var(--color-link-hover); }
-code, pre, .mono { font-family: var(--font-mono); font-size: 0.93em; }
+code, pre, .mono { font-family: var(--font-mono); font-size: 0.86em; font-variation-settings: "wdth" var(--mono-wdth); }
 :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
 /* ---------- 5. Component recipes (the app's recurring pieces) ------------ */
@@ -338,7 +342,8 @@ code, pre, .mono { font-family: var(--font-mono); font-size: 0.93em; }
 
 /* KPI / usage figures */
 .kpi-label { font-size: var(--text-sm); font-weight: 600; color: var(--color-text-muted); }
-.kpi-value { font-family: var(--font-display); font-size: var(--text-2xl); font-weight: 700; letter-spacing: var(--tracking-tight); }
+.kpi-value { font-family: var(--font-display); font-size: var(--text-2xl); font-weight: 900; letter-spacing: var(--tracking-tight);
+             font-variation-settings: "wdth" var(--display-wdth); }
 .kpi-value--cost { color: var(--cost-total); }
 .eyebrow { font-size: var(--text-xs); font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
 
@@ -365,3 +370,69 @@ code, pre, .mono { font-family: var(--font-mono); font-size: 0.93em; }
 @keyframes hp-pulse { 50% { opacity: .45; } }
 .streaming { animation: hp-pulse 1.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .streaming { animation: none; } }
+
+/* ---------- 6. Ember: the landing page and the app ------------------------ */
+/* Always dark, lit tangerine. Inside .ember the semantic tokens are
+   redefined, so every utility and recipe (bg-surface, .card, .verdict--pass,
+   .btn--accent) turns ember without changes. Ember is the one theme where
+   glow, gradients and shadows are allowed (see DESIGN.md). */
+:root {
+  --ember-950: #110810; --ember-900: #160B13; --ember-850: #1C1018; --ember-800: #271621; --ember-700: #3A2230;
+  --ember-cream: #FCEFE6; --ember-muted: #C9B3AB; --ember-dim: #7D6670; --ember-ink: #1A0B05;
+  --amber-300: #FFB067; --tangerine-glow: #FF7A2E; --flame-600: #FF5A1F;
+}
+.ember {
+  color-scheme: dark;
+  accent-color: var(--tangerine-glow);
+  --color-bg: var(--ember-950); --color-bg-sidebar: var(--ember-900); --color-surface: var(--ember-850);
+  --color-surface-hover: var(--ember-800); --color-surface-sunken: var(--ember-900);
+  --color-border: rgb(255 150 90 / 0.16); --color-border-subtle: rgb(255 150 90 / 0.09); --color-track: rgb(255 150 90 / 0.12);
+  --color-scrim: rgb(10 4 8 / 0.7);
+  --color-text: var(--ember-cream); --color-text-muted: var(--ember-muted); --color-text-disabled: var(--ember-dim);
+  --color-text-on-primary: var(--ember-ink); --color-text-on-accent: var(--ember-ink);
+  --color-primary: var(--tangerine-glow); --color-primary-hover: var(--amber-300);
+  --color-primary-tint: rgb(255 122 46 / 0.14); --color-primary-tint-text: var(--amber-300);
+  --color-link: var(--amber-300); --color-link-hover: var(--ember-cream);
+  --color-accent: var(--tangerine-glow); --color-accent-hover: var(--amber-300);
+  --color-accent-tint: rgb(255 122 46 / 0.15); --color-accent-text: var(--amber-300); --color-accent-deep: var(--flame-600);
+  --color-success-tint: rgb(156 211 180 / 0.12); --color-success-text: var(--sage-300);
+  --color-danger-tint: rgb(242 165 173 / 0.12); --color-danger-text: var(--berry-300);
+  --color-warn-tint: rgb(255 176 103 / 0.14); --color-warn-text: var(--amber-300);
+  --verdict-pass-bg: var(--tangerine-glow); --verdict-pass-text: var(--ember-ink);
+  --verdict-reject-bg: rgb(242 165 173 / 0.12); --verdict-reject-text: var(--berry-300);
+  --verdict-pending-bg: rgb(252 239 230 / 0.07); --verdict-pending-text: var(--ember-muted);
+  --verdict-before-after-arrow: var(--amber-300);
+  --severity-high: var(--berry-300); --severity-medium: var(--amber-300); --severity-low: var(--plum-300);
+  --quote-bar: var(--tangerine-glow); --quote-bg: var(--ember-900);
+  --eval-supported: var(--sage-300); --eval-partly-supported: var(--amber-300); --eval-unsupported: var(--berry-300);
+  --col-to-apply: var(--ember-dim); --col-applied: var(--plum-300); --col-in-conversation: var(--amber-300);
+  --col-interviewing: var(--tangerine-glow); --col-offer: var(--flame-600); --col-closed: var(--ember-700);
+  --due-today-bg: var(--tangerine-glow); --due-today-text: var(--ember-ink);
+  --due-later-bg: var(--ember-800); --due-later-text: var(--ember-muted);
+  --limit-ok: var(--sage-300); --limit-near: var(--amber-300); --limit-over: var(--berry-300);
+  --chart-grid: rgb(255 150 90 / 0.09);
+  --eval-pass: var(--sage-300); --eval-pass-bg: rgb(156 211 180 / 0.12);
+  --eval-warn: var(--amber-300); --eval-warn-bg: rgb(255 176 103 / 0.14);
+  --eval-fail: var(--berry-300); --eval-fail-bg: rgb(242 165 173 / 0.12);
+  --heldback-bg: rgb(255 122 46 / 0.16); --heldback-text: var(--amber-300); --unlock-text: var(--sage-300);
+  --cost-total: var(--amber-300);
+  --chart-1: var(--tangerine-glow); --chart-2: var(--amber-300); --chart-3: var(--plum-300); --chart-4: var(--ember-dim);
+  --color-focus: var(--amber-300);
+  scrollbar-color: var(--ember-700) var(--ember-950);
+
+  /* Glow */
+  --gradient-accent: linear-gradient(135deg, var(--amber-300), var(--tangerine-glow) 45%, var(--flame-600));
+  --glow-accent: 0 0 0 1px rgb(255 122 46 / 0.55), 0 10px 44px -8px rgb(255 122 46 / 0.65);
+  --glow-strong: 0 0 0 1px rgb(255 176 103 / 0.7), 0 14px 64px -6px rgb(255 122 46 / 0.85);
+  --glow-soft: 0 0 70px -12px rgb(255 122 46 / 0.4);
+  --glow-text: 0 0 28px rgb(255 122 46 / 0.45);
+  --aurora-1: rgb(255 122 46 / 0.34); --aurora-2: rgb(255 90 31 / 0.22); --aurora-3: rgb(181 140 198 / 0.18);
+  --ring-glow: rgb(255 122 46 / 0.5);
+  --sheen: rgb(255 255 255 / 0.35);
+
+  /* Paper: the resume sheets drawn on the dark ground keep the light palette. */
+  --paper: var(--oat-50); --paper-ink: var(--plum-900); --paper-dim: var(--oat-400);
+  --paper-line: var(--plum-300); --paper-rule: var(--tangerine-glow);
+  --paper-held-bg: var(--tangerine-100); --paper-held-text: var(--tangerine-800);
+}
+html:has(.ember) { background: var(--ember-950); }

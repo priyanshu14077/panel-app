@@ -18,7 +18,12 @@
     border-radius: 999px; font-weight: 800; letter-spacing: .04em; font-size: calc(var(--sw) * 0.085); }
   .left { right: auto; left: calc(var(--sw) * 0.08); }
   .reject { background: var(--berry-100); color: var(--berry-700); border: 3px solid var(--berry-300); }
-  .pass { background: var(--plum-600); color: var(--white); }
+  .pass { background: linear-gradient(135deg, var(--amber-300), var(--tangerine-glow) 50%, var(--flame-600)); color: var(--ember-ink);
+    box-shadow: 0 0 0 3px rgb(255 176 103 / 0.6), 0 0 40px 6px rgb(255 122 46 / 0.65); }
+  /* The sheet that passed: lit tangerine, so its glow turns to particles too. */
+  .winner { border-color: var(--tangerine-glow); box-shadow: 0 0 0 2px rgb(255 176 103 / 0.55), 0 0 70px 14px rgb(255 122 46 / 0.55); }
+  .winner .rule { background: var(--tangerine-glow); }
+  .winner .line { background: var(--amber-300); }
 </style>
 <body>
 <script>
@@ -35,7 +40,7 @@
   for (let i = 0; i < n; i++) {
     const mid = (n - 1) / 2;
     const s = document.createElement("div");
-    s.className = "sheet";
+    s.className = i === mid ? "sheet winner" : "sheet";
     s.style.transform = `rotate(${(i - mid) * spread}deg)`;
     s.style.zIndex = String(10 - Math.abs(i - mid));
     let html = `<span class="verdict ${i === mid ? "pass" : i < mid ? "reject left" : "reject"}">${i === mid ? "PASS" : "REJECT"}</span><div class="name"></div><div class="contact"></div>`;
