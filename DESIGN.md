@@ -21,7 +21,8 @@ A dark plum-ground theme ships in `tokens.css` and follows the OS setting; `<htm
 3. **No pure white surfaces, no gradients, no drop shadows, no left-border accent on cards.** The quoted-line block is the one left-border element, and it's a quote.
 4. **Verdicts use the pill, never colored text alone.** PASS = plum pill, REJECT = berry pill, MAYBE = tangerine tint, pending = oat pill with `.streaming`. A reader's PASS means “no” and shows as a berry `PASS (NO)`.
 5. **Numbers that matter are mono.** Costs, token counts, character/word counts, quoted resume lines.
-6. **Type**: Bricolage Grotesque for `h1`/`h2`/KPI values, Manrope for everything else, system mono for figures. Both load via `next/font/google` in `layout.tsx` as `--font-bricolage` / `--font-manrope`, which `--font-display` / `--font-body` read. Never Inter, Roboto, Geist or Arial in the app UI.
+6. **Type**: one family at two widths, plus a mono. Mona Sans expanded (`wdth` 125) and heavy (800–900) for `h1`/`h2`, KPI values and display numbers; Mona Sans at normal width for text; Martian Mono (`wdth` 87.5) for figures, token counts and quoted resume lines. They load via `next/font/google` in `layout.tsx` as `--font-mona` / `--font-martian`, which `--font-display` / `--font-body` / `--font-mono` read; `--display-wdth` and `--mono-wdth` set the widths. Never Inter, Roboto, Geist or Arial in the app UI.
+7. **Tangerine type**: a heading may light one phrase, its payoff, with `<span className="hl">` (a glowing tangerine gradient on Ember). The setup stays cream: "Everything after <span class=hl>the verdict</span>". On app pages headline figures (`.kpi-value`) take the gradient and page titles stay cream. Never light more than one phrase per heading.
 
 ## Layout
 
