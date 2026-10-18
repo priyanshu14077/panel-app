@@ -1,46 +1,84 @@
 @import "tailwindcss";
+/* In the base layer, so a utility on an element can still override a recipe. */
+@import "./tokens.css" layer(base);
 
-:root {
-  --background: #f7f7f5;
-  --surface: #ffffff;
-  --foreground: #1b1b1a;
-  --muted: #6b6b66;
-  --border: #e3e2dd;
-  --accent: #2f5d50;
-  --good: #2f7a4a;
-  --warn: #9a6b12;
-  --bad: #a83a32;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #121211;
-    --surface: #1c1c1a;
-    --foreground: #ecebe6;
-    --muted: #9b9a93;
-    --border: #2e2e2b;
-    --accent: #7fb8a4;
-    --good: #6cc08a;
-    --warn: #d9a74a;
-    --bad: #e2766d;
-  }
-}
-
+/* Tailwind reads the semantic tokens; its own palette is switched off so no
+   stray hex can reach a component. Names that match a token resolve to it:
+   tokens.css sits in a later layer than Tailwind's theme. */
 @theme inline {
-  --color-background: var(--background);
-  --color-surface: var(--surface);
-  --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
-  --color-border: var(--border);
-  --color-accent: var(--accent);
-  --color-good: var(--good);
-  --color-warn: var(--warn);
-  --color-bad: var(--bad);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-*: initial;
+  --color-canvas: var(--color-bg);
+  --color-rail: var(--color-bg-sidebar);
+  --color-surface: var(--color-surface);
+  --color-surface-hover: var(--color-surface-hover);
+  --color-sunken: var(--color-surface-sunken);
+  --color-line: var(--color-border);
+  --color-line-subtle: var(--color-border-subtle);
+  --color-track: var(--color-track);
+  --color-ink: var(--color-text);
+  --color-muted: var(--color-text-muted);
+  --color-disabled: var(--color-text-disabled);
+  --color-primary: var(--color-primary);
+  --color-primary-tint: var(--color-primary-tint);
+  --color-primary-tint-text: var(--color-primary-tint-text);
+  --color-accent: var(--color-accent);
+  --color-accent-tint: var(--color-accent-tint);
+  --color-accent-text: var(--color-accent-text);
+  --color-pass: var(--eval-pass);
+  --color-warn: var(--eval-warn);
+  --color-fail: var(--eval-fail);
+  --color-pass-tint: var(--eval-pass-bg);
+  --color-warn-tint: var(--eval-warn-bg);
+  --color-fail-tint: var(--eval-fail-bg);
+  --color-scrim: var(--color-scrim);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --text-md: var(--text-md);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
+@layer base {
+  *, ::before, ::after { border-color: var(--color-border); }
 }
+
+/* ---------- App pieces not in the design recipes ------------------------- */
+@layer components {
+  /* A reviewer who is undecided. Tangerine, because it is a warning. */
+  .verdict--maybe { background: var(--color-warn-tint); color: var(--color-warn-text); }
+
+  /* Segmented control: tabs inside a run, the outreach target picker. */
+  .segmented { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); padding: var(--space-1);
+               border-radius: var(--radius-lg); background: var(--color-surface-sunken); }
+  .segmented > button { min-height: 36px; padding: 0 var(--space-4); border-radius: var(--radius-md);
+                        font-weight: 600; color: var(--color-text-muted); }
+  .segmented > button:hover:not(:disabled) { color: var(--color-text); }
+  .segmented > button[aria-pressed="true"], .segmented > button[aria-selected="true"] {
+    background: var(--color-primary); color: var(--color-text-on-primary); }
+  .segmented > button:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* Small text action inside a card (Copy, Preview). Still a real button. */
+  .link-btn { font-weight: 600; color: var(--color-link); cursor: pointer; }
+  .link-btn:hover { color: var(--color-link-hover); text-decoration: underline; }
+
+  .field-label { display: block; font-size: var(--text-sm); font-weight: 600; color: var(--color-text); margin-bottom: var(--space-2); }
+  .field-hint { font-size: var(--text-xs); color: var(--color-text-muted); }
+
+  /* Expanders: the native triangle is replaced with a rotating chevron. */
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+  .chevron { transition: transform .15s ease; flex: none; color: var(--color-text-muted); }
+  details[open] > summary .chevron { transform: rotate(90deg); }
+  @media (prefers-reduced-motion: reduce) { .chevron { transition: none; } }
+
+  /* Grounding judge: each resume line's bar is coloured by its support. */
+  .judge-line { display: grid; grid-template-columns: 3px 1fr; gap: var(--space-3); }
+  .judge-line::before { content: ""; border-radius: 2px; background: var(--_support, var(--color-border)); }
+  .judge-line--supported { --_support: var(--eval-supported); }
+  .judge-line--partly { --_support: var(--eval-partly-supported); }
+  .judge-line--unsupported { --_support: var(--eval-unsupported); }
+
+  /* Brand mark: plum square, tangerine dot. */
+  .brand-mark { position: relative; width: 28px; height: 28px; border-radius: var(--radius-sm); background: var(--color-primary); flex: none; }
+  .brand-mark::after { content: ""; position: absolute; right: 6px; bottom: 6px; width: 8px; height: 8px;
+                       border-radius: var(--radius-pill); background: var(--color-accent); }
+}
+
