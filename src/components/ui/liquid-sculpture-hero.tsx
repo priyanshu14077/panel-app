@@ -1400,7 +1400,7 @@ export default function SculptureHero(props: SculptureHeroProps) {
   } = props
 
   const rootRef = React.useRef<HTMLElement>(null)
-  const canvasRef = React.useRef<HTMLCanvasElement>(null)
+  const stageRef = React.useRef<HTMLDivElement>(null)
   const navRef = React.useRef<HTMLElement>(null)
   const contentRef = React.useRef<HTMLDivElement>(null)
   const engineRef = React.useRef<LiquidEngine | null>(null)
@@ -1490,9 +1490,15 @@ export default function SculptureHero(props: SculptureHeroProps) {
   )
 
   // The engine lives as long as the component; without WebGL2 the image stays.
+  // Each mount gets its own canvas: destroy() loses the GL context, and a
+  // remount (React's dev double-mount included) can't reuse a lost one.
   React.useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
+    const stage = stageRef.current
+    if (!stage) return
+    const canvas = document.createElement("canvas")
+    canvas.className = "sh-canvas"
+    canvas.setAttribute("aria-hidden", "true")
+    stage.appendChild(canvas)
     let engine: LiquidEngine | null = null
     try {
       engine = new LiquidEngine(canvas, engineOptions() as EngineOptions, () => {
@@ -1500,11 +1506,13 @@ export default function SculptureHero(props: SculptureHeroProps) {
         engineRef.current = null
       })
       engineRef.current = engine
-    } catch {
+    } catch (err) {
+      console.warn("SculptureHero: WebGL2 unavailable, showing the static image.", err)
       engineRef.current = null
     }
     return () => {
       engine?.destroy()
+      canvas.remove()
       engineRef.current = null
       setGlOn(false)
     }
@@ -1532,7 +1540,8 @@ export default function SculptureHero(props: SculptureHeroProps) {
             if (!cancelled) setGlOn(true)
           }
           engine.setImage(img)
-        } catch {
+        } catch (err) {
+          console.warn("SculptureHero: could not read the image, showing it static.", err)
           engineRef.current = null
           setGlOn(false)
         }
@@ -1605,7 +1614,7 @@ export default function SculptureHero(props: SculptureHeroProps) {
       onPointerCancel={onPointer}
     >
       <style>{CSS}</style>
-      <div className="sh-stage">
+      <div ref={stageRef} className="sh-stage">
         {backdropText && (
           <div className="sh-backdrop" aria-hidden="true" style={{ top: (band.top + band.bottom) / 2, fontSize: "clamp(120px, 24cqw, 460px)" }}>
             {backdropText}
@@ -1620,7 +1629,6 @@ export default function SculptureHero(props: SculptureHeroProps) {
           draggable={false}
           style={rect ? { left: rect.x, top: rect.y, width: rect.w, height: rect.h } : { opacity: 0 }}
         />
-        <canvas ref={canvasRef} className="sh-canvas" aria-hidden="true" />
       </div>
 
       {showNav && (
