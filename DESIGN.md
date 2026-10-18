@@ -79,4 +79,11 @@ Every page is now Ember: always dark, lit tangerine. Inside `.ember` (on the lan
 - Use `.hp-enter` with an inline `--i` index for a staggered entrance, and `.hp-grow` on a bar that should measure up.
 
 ## Landing page (`/`)
-The hero is `src/components/ui/liquid-sculpture-hero.tsx`, a third-party component that keeps its own CSS and hex defaults. Never edit its colours; the landing passes tokens in (`background="var(--color-bg)"`, `textColor="var(--color-text)"`, fonts from `--font-display` / `--font-body`) and restyles its button and links under `.landing` in `globals.css`. Its particle image is `public/hero/*.png`, drawn from tokens in `scripts/hero-art/art.html`; rerun `scripts/hero-art/render.sh` after changing it. One tangerine CTA in the hero ("Start a run"), one in the closing band.
+
+- Styles live in `src/app/landing.css`, unlayered so they beat the hero's own unlayered CSS. Sections are components in `src/components/landing/`.
+- Every animation shows something the product does (verdicts landing, the screen flipping to PASS, the pipeline lighting up, a character count, a card crossing the board, eval bars, cost count-ups). Each starts when its section scrolls into view (`useInView`), and `prefers-reduced-motion` turns all of it off.
+- Starting states that hide content sit under `@media (scripting: enabled)`, so nothing stays hidden without JavaScript.
+- The hero is `src/components/ui/liquid-sculpture-hero.tsx`, a third-party component with its own CSS and hex defaults; never edit its colours, pass tokens in. Its image is `public/hero/*.png`, drawn from tokens in `scripts/hero-art/art.html`; rerun `scripts/hero-art/render.sh` after changing it.
+- Light resume sheets drawn on the dark ground use the `--paper-*` tokens.
+- The "Inside the app" tour shows `public/screens/*.jpg`. Capture them only from demo data (a placeholder candidate and made-up companies, served with `JOB_HUNT_ROOT=<demo folder> npx next start -p 3100`), never from real runs: the page is public. Leave out any screen that quotes a real resume line.
+- No captions or ledes under section headings: a heading and its component carry the section.
