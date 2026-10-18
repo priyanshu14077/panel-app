@@ -68,3 +68,5 @@ A dark plum-ground theme ships in `tokens.css` and follows the OS setting; `<htm
 
 Tailwind's `text-xs` … `text-2xl` and `rounded-sm` … `rounded-xl` read the token scale (12/13/18/28/32 px; 8/10/12/16 px radii). Use `min-[N]:` breakpoints only where no `sm:`/`xl:` variant on the same property competes; Tailwind sorts arbitrary breakpoints before named ones.
 
+## Landing page (`/`)
+The hero is `src/components/ui/liquid-sculpture-hero.tsx`, a third-party component that keeps its own CSS and hex defaults. Never edit its colours; the landing passes tokens in (`background="var(--color-bg)"`, `textColor="var(--color-text)"`, fonts from `--font-display` / `--font-body`) and restyles its button and links under `.landing` in `globals.css`. Its particle image is `public/hero/*.png`, drawn from tokens in `scripts/hero-art/art.html`; rerun `scripts/hero-art/render.sh` after changing it. One tangerine CTA in the hero ("Start a run"), one in the closing band.
