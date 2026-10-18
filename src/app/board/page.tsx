@@ -40,7 +40,9 @@ export default function BoardPage() {
   const load = useCallback(() => {
     fetch("/api/board").then((r) => r.json()).then(setCards);
   }, []);
-  useEffect(load, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function patch(id: string, body: object) {
     const res = await fetch(`/api/runs/${id}/board`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -162,7 +164,9 @@ function Drawer({ card, onClose, onPatch, onChanged }: { card: Card; onClose: ()
   const loadRun = useCallback(() => {
     fetch(`/api/runs/${card.id}`).then((r) => r.json()).then(setRun);
   }, [card.id]);
-  useEffect(loadRun, [loadRun]);
+  useEffect(() => {
+    loadRun();
+  }, [loadRun]);
 
   async function draft(w: (typeof WRITEUP_INFO)[number]) {
     setBusy(w.id);
