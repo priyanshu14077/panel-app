@@ -365,3 +365,69 @@ code, pre, .mono { font-family: var(--font-mono); font-size: 0.93em; }
 @keyframes hp-pulse { 50% { opacity: .45; } }
 .streaming { animation: hp-pulse 1.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .streaming { animation: none; } }
+
+/* ---------- 6. Ember: the landing page and the app ------------------------ */
+/* Always dark, lit tangerine. Inside .ember the semantic tokens are
+   redefined, so every utility and recipe (bg-surface, .card, .verdict--pass,
+   .btn--accent) turns ember without changes. Ember is the one theme where
+   glow, gradients and shadows are allowed (see DESIGN.md). */
+:root {
+  --ember-950: #110810; --ember-900: #160B13; --ember-850: #1C1018; --ember-800: #271621; --ember-700: #3A2230;
+  --ember-cream: #FCEFE6; --ember-muted: #C9B3AB; --ember-dim: #7D6670; --ember-ink: #1A0B05;
+  --amber-300: #FFB067; --tangerine-glow: #FF7A2E; --flame-600: #FF5A1F;
+}
+.ember {
+  color-scheme: dark;
+  accent-color: var(--tangerine-glow);
+  --color-bg: var(--ember-950); --color-bg-sidebar: var(--ember-900); --color-surface: var(--ember-850);
+  --color-surface-hover: var(--ember-800); --color-surface-sunken: var(--ember-900);
+  --color-border: rgb(255 150 90 / 0.16); --color-border-subtle: rgb(255 150 90 / 0.09); --color-track: rgb(255 150 90 / 0.12);
+  --color-scrim: rgb(10 4 8 / 0.7);
+  --color-text: var(--ember-cream); --color-text-muted: var(--ember-muted); --color-text-disabled: var(--ember-dim);
+  --color-text-on-primary: var(--ember-ink); --color-text-on-accent: var(--ember-ink);
+  --color-primary: var(--tangerine-glow); --color-primary-hover: var(--amber-300);
+  --color-primary-tint: rgb(255 122 46 / 0.14); --color-primary-tint-text: var(--amber-300);
+  --color-link: var(--amber-300); --color-link-hover: var(--ember-cream);
+  --color-accent: var(--tangerine-glow); --color-accent-hover: var(--amber-300);
+  --color-accent-tint: rgb(255 122 46 / 0.15); --color-accent-text: var(--amber-300); --color-accent-deep: var(--flame-600);
+  --color-success-tint: rgb(156 211 180 / 0.12); --color-success-text: var(--sage-300);
+  --color-danger-tint: rgb(242 165 173 / 0.12); --color-danger-text: var(--berry-300);
+  --color-warn-tint: rgb(255 176 103 / 0.14); --color-warn-text: var(--amber-300);
+  --verdict-pass-bg: var(--tangerine-glow); --verdict-pass-text: var(--ember-ink);
+  --verdict-reject-bg: rgb(242 165 173 / 0.12); --verdict-reject-text: var(--berry-300);
+  --verdict-pending-bg: rgb(252 239 230 / 0.07); --verdict-pending-text: var(--ember-muted);
+  --verdict-before-after-arrow: var(--amber-300);
+  --severity-high: var(--berry-300); --severity-medium: var(--amber-300); --severity-low: var(--plum-300);
+  --quote-bar: var(--tangerine-glow); --quote-bg: var(--ember-900);
+  --eval-supported: var(--sage-300); --eval-partly-supported: var(--amber-300); --eval-unsupported: var(--berry-300);
+  --col-to-apply: var(--ember-dim); --col-applied: var(--plum-300); --col-in-conversation: var(--amber-300);
+  --col-interviewing: var(--tangerine-glow); --col-offer: var(--flame-600); --col-closed: var(--ember-700);
+  --due-today-bg: var(--tangerine-glow); --due-today-text: var(--ember-ink);
+  --due-later-bg: var(--ember-800); --due-later-text: var(--ember-muted);
+  --limit-ok: var(--sage-300); --limit-near: var(--amber-300); --limit-over: var(--berry-300);
+  --chart-grid: rgb(255 150 90 / 0.09);
+  --eval-pass: var(--sage-300); --eval-pass-bg: rgb(156 211 180 / 0.12);
+  --eval-warn: var(--amber-300); --eval-warn-bg: rgb(255 176 103 / 0.14);
+  --eval-fail: var(--berry-300); --eval-fail-bg: rgb(242 165 173 / 0.12);
+  --heldback-bg: rgb(255 122 46 / 0.16); --heldback-text: var(--amber-300); --unlock-text: var(--sage-300);
+  --cost-total: var(--amber-300);
+  --chart-1: var(--tangerine-glow); --chart-2: var(--amber-300); --chart-3: var(--plum-300); --chart-4: var(--ember-dim);
+  --color-focus: var(--amber-300);
+  scrollbar-color: var(--ember-700) var(--ember-950);
+
+  /* Glow */
+  --gradient-accent: linear-gradient(135deg, var(--amber-300), var(--tangerine-glow) 45%, var(--flame-600));
+  --glow-accent: 0 0 0 1px rgb(255 122 46 / 0.55), 0 10px 44px -8px rgb(255 122 46 / 0.65);
+  --glow-strong: 0 0 0 1px rgb(255 176 103 / 0.7), 0 14px 64px -6px rgb(255 122 46 / 0.85);
+  --glow-soft: 0 0 70px -12px rgb(255 122 46 / 0.4);
+  --glow-text: 0 0 28px rgb(255 122 46 / 0.45);
+  --aurora-1: rgb(255 122 46 / 0.34); --aurora-2: rgb(255 90 31 / 0.22); --aurora-3: rgb(181 140 198 / 0.18);
+  --ring-glow: rgb(255 122 46 / 0.5);
+  --sheen: rgb(255 255 255 / 0.35);
+
+  /* Paper: the resume sheets drawn on the dark ground keep the light palette. */
+  --paper: var(--oat-50); --paper-ink: var(--plum-900); --paper-dim: var(--oat-400);
+  --paper-line: var(--plum-300); --paper-rule: var(--tangerine-glow);
+  --paper-held-bg: var(--tangerine-100); --paper-held-text: var(--tangerine-800);
+}
+html:has(.ember) { background: var(--ember-950); }
