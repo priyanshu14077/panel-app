@@ -66,13 +66,30 @@ function textOf(content: Anthropic.Beta.BetaContentBlock[]): string {
     .trim();
 }
 
-export async function askText(opts: { tier: Tier; system: string; prompt: string; effort: Effort; tag?: UsageTag }): Promise<string> {
+// A run's shared material (posting, resume, profile, knowledge base) goes in
+// `context`, marked for caching, ahead of the task-specific `prompt`. The cache
+// key also covers the system prompt and the output schema, so only repeats of
+// the same action within 5 minutes read it back (at 0.1x): drafting outreach
+// for several targets, or several kinds of email. Pass it only for those; a
+// one-off call would pay the 1.25x write for nothing.
+function userTurn(prompt: string, context?: string): Message {
+  if (!context) return { role: "user", content: prompt };
+  return {
+    role: "user",
+    content: [
+      { type: "text", text: context, cache_control: { type: "ephemeral" } },
+      { type: "text", text: prompt },
+    ],
+  };
+}
+
+export async function askText(opts: { tier: Tier; system: string; prompt: string; context?: string; effort: Effort; tag?: UsageTag }): Promise<string> {
   const message = await finalOnTier(opts.tier, opts.tag, (model) =>
     getClient().beta.messages.stream({
       model,
       max_tokens: 16000,
       system: opts.system,
-      messages: [{ role: "user", content: opts.prompt }],
+      messages: [userTurn(opts.prompt, opts.context)],
       output_config: { effort: opts.effort },
       ...fallbackFor(model),
     }),
@@ -84,6 +101,7 @@ export async function askStructured<S extends z.ZodType>(opts: {
   tier: Tier;
   system: string;
   prompt: string;
+  context?: string;
   schema: S;
   effort: Effort;
   tag?: UsageTag;
@@ -93,7 +111,7 @@ export async function askStructured<S extends z.ZodType>(opts: {
       model,
       max_tokens: 64000,
       system: opts.system,
-      messages: [{ role: "user", content: opts.prompt }],
+      messages: [userTurn(opts.prompt, opts.context)],
       output_config: { effort: opts.effort, format: betaZodOutputFormat(opts.schema) },
       ...fallbackFor(model),
     }),
