@@ -32,7 +32,9 @@ export function KnowledgePanel() {
   const load = useCallback(() => {
     fetch("/api/knowledge").then((r) => r.json()).then(setK);
   }, []);
-  useEffect(load, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function refresh() {
     setBusy(true);

@@ -720,7 +720,11 @@ function Chat({ run }: { run: Run }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => endRef.current?.scrollIntoView({ block: "end" }), [turns]);
+  // Braces matter: scrollIntoView returns a Promise in current Chrome, and an
+  // effect may only return a cleanup function.
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [turns]);
 
   const starters = [
     ...(run.details?.formQuestions ?? []),

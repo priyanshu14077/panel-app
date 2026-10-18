@@ -398,11 +398,13 @@ Each call names what it needs, and the profile picks the model:
 
 Ways it keeps cost down:
 
-- **Repo shortlist**: each run picks the 12 repos most relevant to the posting, so writing calls read about 6k tokens of knowledge base instead of all of it.
-- **Chat caching**: the candidate material is cached, so follow-up chat turns re-read it at a tenth of the price.
+- **Repo shortlist**: each run picks the 12 repos most relevant to the posting, so writing calls read about 9k tokens of knowledge base instead of all of it.
+- **Prompt caching**: chat turns, outreach sequences and emails send the run's material (posting, resume, profile, knowledge base) as a cached block ahead of the task. The cache key also covers the system prompt and output schema, so it pays off when the same action repeats within 5 minutes: a second and third outreach target re-read about 21k tokens at a tenth of the price. One-off calls (rebuild, ideas) skip it rather than pay the 1.25x cache write.
+- **Research reuse**: a company brief from any run for the same company in the last 30 days is reused instead of searching the web again.
+- **Medium effort for writing**: rebuild, company ideas and add-project run at medium effort; high mostly bought extra thinking tokens.
 - **Refusal handling**: Sonnet and Opus retry a safety refusal server-side on Anthropic's recommended model. Haiku has no server-side fallback, so its refusals are retried once on Sonnet.
 
-Rough add-on costs on `balanced`: company research about $0.15, an outreach sequence about $0.05, the grounding judge about $0.05. The **Usage & cost** page shows real numbers from `.hiring-panel/usage.jsonl`.
+Rough add-on costs on `balanced`: company research about $0.20 (free when a recent brief is reused), company ideas about $0.07, an outreach sequence about $0.07 for the first target and $0.02 for each further one drafted within 5 minutes, the grounding judge about $0.05. The **Usage & cost** page shows real numbers from `.hiring-panel/usage.jsonl`.
 
 ---
 
