@@ -374,7 +374,7 @@ export function runPanel(input: { jobText: string; resumeFile: string }): AsyncG
     const ctx = await candidateContext(run);
     const context = contextBlock(run, ctx, resume);
     const [rebuild, ideas] = await Promise.all([
-      askStructured({ system: REBUILD_SYSTEM, prompt: `${context}\n\n${mistakesBlock(findings)}`, schema: Rebuild, effort: "high", tier: "writer", tag: { runId: run.id, action: "rebuild" } }),
+      askStructured({ system: REBUILD_SYSTEM, prompt: `${context}\n\n${mistakesBlock(findings)}`, schema: Rebuild, effort: "medium", tier: "writer", tag: { runId: run.id, action: "rebuild" } }),
       askStructured({ system: IDEAS_SYSTEM, prompt: `${context}\n\n${mistakesBlock(findings)}`, schema: Ideas, effort: "medium", tier: "writer", tag: { runId: run.id, action: "ideas" } }),
     ]);
     run.details = (await details) ?? undefined;
@@ -438,7 +438,7 @@ export async function researchCompany(id: string): Promise<AsyncGenerator<RunEve
       system: COMPANY_IDEAS_SYSTEM,
       prompt: `${contextBlock(run, ctx, improvedText(run, ctx))}\n\n${mistakesBlock(s)}`,
       schema: Ideas,
-      effort: "high",
+      effort: "medium",
       tier: "writer", tag: { runId: run.id, action: "company-ideas" },
     });
     run.companyIdeas = ideas;
@@ -464,7 +464,7 @@ export async function addProject(id: string, project: AddedProject): Promise<Asy
       system: REBUILD_SYSTEM,
       prompt: `${contextBlock(run, ctx, improvedText(run, ctx))}\n\n${mistakesBlock(s)}\n\n<new_project>\nThe candidate just added this project. Include it in Projects, written from these details only.\nName: ${project.name}\nStatus: ${project.status}\nURL: ${project.url || "(none)"}\nStack: ${project.stack}\nDetails: ${project.details}\n</new_project>`,
       schema: Rebuild,
-      effort: "high",
+      effort: "medium",
       tier: "writer", tag: { runId: run.id, action: "add-project" },
     });
     s.resume = rebuild.resume;
