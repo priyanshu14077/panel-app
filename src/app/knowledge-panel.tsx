@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { KnowledgeEvent } from "@/lib/knowledge/cards";
 import { readNdjson } from "@/lib/read-ndjson";
+import { Card, Chevron } from "./ui";
 
 interface RepoRow {
   fullName: string;
@@ -63,57 +64,74 @@ export function KnowledgePanel() {
   const used = k?.repos.filter((r) => r.included && r.summary).length ?? 0;
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">Knowledge base</h2>
-        <button className="rounded-md border border-border px-2 py-1 text-xs font-medium disabled:opacity-50" disabled={busy} onClick={refresh}>
-          {busy ? "Refreshing…" : k ? "Refresh" : "Build"}
+    <Card
+      title="Knowledge base"
+      className="bg-rail"
+      action={
+        <button className="btn btn--primary" disabled={busy} onClick={refresh}>
+          {busy ? "Refreshing…" : k ? "Refresh" : "Build knowledge base"}
         </button>
-      </div>
+      }
+    >
       {!k && !busy && (
         <p className="text-sm text-muted">
-          Not built yet. Build it to let runs pick projects from your GitHub repos and portfolio. The first build makes one Claude call per repo; later
-          refreshes only re-read repos you have pushed to since.
+          Build it so runs can pick projects from your GitHub repos and portfolio. The first build makes one Claude call per repo; later refreshes
+          only re-read repos you have pushed to since.
         </p>
       )}
       {k && (
-        <p className="text-sm text-muted">
-          {used} of {k.repos.length} repos in use{k.site ? ` · ${k.site.pages} portfolio pages` : " · no portfolio"} · built{" "}
-          {new Date(k.builtAt).toLocaleDateString()}
-        </p>
+        <dl className="grid grid-cols-3 gap-3">
+          <div>
+            <dt className="kpi-label">Repos in use</dt>
+            <dd className="kpi-value text-xl">
+              {used}
+              <span className="text-sm text-muted"> / {k.repos.length}</span>
+            </dd>
+          </div>
+          <div>
+            <dt className="kpi-label">Portfolio pages</dt>
+            <dd className="kpi-value text-xl">{k.site ? k.site.pages : 0}</dd>
+          </div>
+          <div>
+            <dt className="kpi-label">Built</dt>
+            <dd className="mono mt-2 text-sm">{new Date(k.builtAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</dd>
+          </div>
+        </dl>
       )}
       {log.length > 0 && (
-        <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-background p-2 font-mono text-[11px] leading-relaxed text-muted">
+        <pre className="mt-4 max-h-48 overflow-auto rounded-md bg-sunken p-3 text-xs leading-relaxed whitespace-pre-wrap text-muted" aria-live="polite">
           {log.join("\n")}
         </pre>
       )}
       {k && k.repos.length > 0 && (
-        <button className="mt-3 text-xs font-medium text-accent" onClick={() => setOpen((o) => !o)}>
-          {open ? "Hide repos" : "Choose which repos runs may use"}
-        </button>
-      )}
-      {open && k && (
-        <ul className="mt-2 max-h-[28rem] space-y-2 overflow-auto pr-1">
-          {k.repos.map((r) => (
-            <li key={r.fullName} className="rounded-md border border-border p-2">
-              <label className="flex cursor-pointer items-start gap-2 text-xs">
-                <input type="checkbox" className="mt-0.5" checked={r.included} disabled={!r.summary} onChange={(e) => toggle(r.fullName, e.target.checked)} />
-                <span className="min-w-0">
-                  <a href={r.url} target="_blank" rel="noreferrer" className="font-medium hover:underline">
-                    {r.fullName}
-                  </a>
-                  <span className="text-muted">
-                    {" "}
-                    · {r.userCommits} commits{r.isPrivate ? " · private" : ""}
-                    {r.kind ? ` · ${r.kind}, ${r.maturity}` : " · empty"}
+        <details className="mt-4 border-t border-line pt-3" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+          <summary className="flex min-h-11 items-center gap-2 text-sm font-semibold">
+            <Chevron />
+            Choose which repos runs may use
+          </summary>
+          <ul className="mt-2 max-h-[28rem] space-y-1 overflow-y-auto pr-1">
+            {k.repos.map((r) => (
+              <li key={r.fullName}>
+                <label className={`flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-surface-hover ${r.summary ? "" : "text-muted"}`}>
+                  <input type="checkbox" className="mt-1" checked={r.included} disabled={!r.summary} onChange={(e) => toggle(r.fullName, e.target.checked)} />
+                  <span className="min-w-0 text-sm">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <a href={r.url} target="_blank" rel="noreferrer" className="truncate font-semibold">
+                        {r.fullName.split("/").pop()}
+                      </a>
+                      {r.maturity && <span className="badge badge--neutral">{r.maturity}</span>}
+                    </span>
+                    <span className="mono mt-0.5 block text-xs text-muted">
+                      {r.userCommits} commits{r.isPrivate ? " · private" : ""}
+                      {r.kind ? ` · ${r.kind}` : " · no commits by you"}
+                    </span>
                   </span>
-                  {r.summary && <span className="mt-0.5 block text-muted">{r.summary}</span>}
-                </span>
-              </label>
-            </li>
-          ))}
-        </ul>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
-    </div>
+    </Card>
   );
 }
