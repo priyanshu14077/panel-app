@@ -1,0 +1,46 @@
+<!doctype html>
+<!-- Source for public/hero/*.png, the landing hero's particle image. Render
+     with render.sh; the transparent background makes the hero sample by alpha. -->
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../src/app/tokens.css">
+<style>
+  html, body { margin: 0; background: transparent !important; }
+  body { width: var(--w); height: var(--h); position: relative; overflow: hidden; font-family: system-ui, sans-serif; }
+  .sheet { position: absolute; left: 50%; bottom: var(--pivot); width: var(--sw); height: calc(var(--sw) * 1.32);
+    margin-left: calc(var(--sw) / -2); transform-origin: 50% calc(100% + var(--pivot-drop));
+    background: var(--oat-50); border: 3px solid var(--oat-300); border-radius: 18px; padding: calc(var(--sw) * 0.09);
+    box-sizing: border-box; display: flex; flex-direction: column; gap: calc(var(--sw) * 0.035); }
+  .name { height: calc(var(--sw) * 0.06); width: 58%; background: var(--plum-900); border-radius: 6px; }
+  .contact { height: calc(var(--sw) * 0.022); width: 82%; background: var(--oat-400); border-radius: 4px; margin-bottom: calc(var(--sw) * 0.03); }
+  .rule { height: calc(var(--sw) * 0.03); width: 34%; background: var(--plum-600); border-radius: 4px; margin-top: calc(var(--sw) * 0.02); }
+  .line { height: calc(var(--sw) * 0.022); background: var(--plum-300); border-radius: 4px; }
+  .verdict { position: absolute; top: calc(var(--sw) * -0.07); right: calc(var(--sw) * 0.08); padding: calc(var(--sw) * 0.03) calc(var(--sw) * 0.07);
+    border-radius: 999px; font-weight: 800; letter-spacing: .04em; font-size: calc(var(--sw) * 0.085); }
+  .left { right: auto; left: calc(var(--sw) * 0.08); }
+  .reject { background: var(--berry-100); color: var(--berry-700); border: 3px solid var(--berry-300); }
+  .pass { background: var(--plum-600); color: var(--white); }
+</style>
+<body>
+<script>
+  const params = new URLSearchParams(location.search);
+  const mobile = params.has("mobile");
+  const [w, h] = mobile ? [1100, 860] : [2400, 860];
+  const sw = mobile ? 380 : 360;            // sheet width
+  const n = mobile ? 5 : 7;
+  const spread = mobile ? 12 : 12;          // degrees between sheets
+  const root = document.body.style;
+  root.setProperty("--w", w + "px"); root.setProperty("--h", h + "px"); root.setProperty("--sw", sw + "px");
+  root.setProperty("--pivot", (mobile ? 210 : 265) + "px"); root.setProperty("--pivot-drop", (mobile ? 600 : 760) + "px");
+  const widths = [92, 78, 88, 64, 0, 90, 72, 84, 0, 86, 70];
+  for (let i = 0; i < n; i++) {
+    const mid = (n - 1) / 2;
+    const s = document.createElement("div");
+    s.className = "sheet";
+    s.style.transform = `rotate(${(i - mid) * spread}deg)`;
+    s.style.zIndex = String(10 - Math.abs(i - mid));
+    let html = `<span class="verdict ${i === mid ? "pass" : i < mid ? "reject left" : "reject"}">${i === mid ? "PASS" : "REJECT"}</span><div class="name"></div><div class="contact"></div>`;
+    widths.forEach((wd, j) => { html += wd ? `<div class="line" style="width:${((wd + i * 7 + j * 3) % 30) + 62}%"></div>` : `<div class="rule"></div>`; });
+    s.innerHTML = html;
+    document.body.appendChild(s);
+  }
+</script>
