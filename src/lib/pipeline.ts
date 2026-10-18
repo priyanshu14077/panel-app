@@ -61,6 +61,7 @@ export interface Run {
   rescreens: Screen[];
   pdf?: { folder: string; file: string; check: PdfCheck };
   companyBrief?: string;
+  companyResearchedAt?: string;
   companyIdeas?: ProjectIdea[];
   chat?: ChatTurn[];
   emails?: DraftedEmail[];
@@ -421,18 +422,39 @@ export async function answerQuestions(id: string, answers: Record<string, string
   });
 }
 
+// Web research is a fifth of a run's cost and a company changes slowly, so a
+// brief from any run for the same company in the last 30 days is reused.
+const BRIEF_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+async function recentBrief(company: string): Promise<{ brief: string; at: string } | null> {
+  const key = company.trim().toLowerCase();
+  const found = (await loadAllRuns())
+    .filter((r) => r.companyBrief && r.synthesis?.job.company.trim().toLowerCase() === key)
+    .map((r) => ({ brief: r.companyBrief!, at: r.companyResearchedAt ?? r.createdAt }))
+    .sort((a, b) => b.at.localeCompare(a.at))[0];
+  return found && Date.now() - Date.parse(found.at) < BRIEF_MAX_AGE_MS ? found : null;
+}
+
 export async function researchCompany(id: string): Promise<AsyncGenerator<RunEvent>> {
   const run = await loadRun(id);
   return guarded(run, async function* () {
     const s = run.synthesis;
     if (!s) throw new Error("Run the panel first.");
     const ctx = await candidateContext(run);
-    yield { type: "stage", stage: `Researching ${s.job.company} on the web` };
-    run.companyBrief = await askResearch({
-      system: RESEARCH_SYSTEM,
-      prompt: `Company: ${s.job.company}\nRole: ${s.job.role}\n\n<job_posting>\n${run.jobText}\n</job_posting>`,
-      tag: { runId: run.id, action: "company-research" },
-    });
+    const recent = await recentBrief(s.job.company);
+    if (recent) {
+      yield { type: "stage", stage: `Reusing the research on ${s.job.company} from ${recent.at.slice(0, 10)}` };
+      run.companyBrief = recent.brief;
+      run.companyResearchedAt = recent.at;
+    } else {
+      yield { type: "stage", stage: `Researching ${s.job.company} on the web` };
+      run.companyBrief = await askResearch({
+        system: RESEARCH_SYSTEM,
+        prompt: `Company: ${s.job.company}\nRole: ${s.job.role}\n\n<job_posting>\n${run.jobText}\n</job_posting>`,
+        tag: { runId: run.id, action: "company-research" },
+      });
+      run.companyResearchedAt = new Date().toISOString();
+    }
     yield { type: "stage", stage: "Designing projects aimed at this company" };
     const { ideas } = await askStructured({
       system: COMPANY_IDEAS_SYSTEM,
