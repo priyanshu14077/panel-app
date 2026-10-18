@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { EvalResult, Status } from "@/lib/evals";
+import { Chevron, Notice, PageHeader } from "@/app/ui";
 
 interface Row {
   id: string;
@@ -10,12 +11,13 @@ interface Row {
   results: EvalResult[];
 }
 
-const TONE: Record<Status, string> = {
-  pass: "text-good border-good",
-  warn: "text-warn border-warn",
-  fail: "text-bad border-bad",
-  skip: "text-muted border-border",
+const BADGE: Record<Status, string> = {
+  pass: "badge badge--pass",
+  warn: "badge badge--warn",
+  fail: "badge badge--fail",
+  skip: "badge badge--neutral text-muted",
 };
+const rateTone = (rate: number) => (rate === 1 ? "var(--eval-pass)" : rate >= 0.5 ? "var(--eval-warn)" : "var(--eval-fail)");
 
 // Checks that repeat per item (one per email, per chat answer) share a prefix.
 const checkKey = (id: string) => id.replace(/-\d.*$/, "").replace(/^(email|outreach|chat)-.*/, "$1");
@@ -72,88 +74,108 @@ export default function EvalsPage() {
       suite.set(k, { ...cur, pass: cur.pass + (e.status === "pass" ? 1 : 0), total: cur.total + 1 });
     }
 
+  const checks = [...suite.entries()];
+  const totals = checks.reduce((t, [, v]) => ({ pass: t.pass + v.pass, total: t.total + v.total }), { pass: 0, total: 0 });
+
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Evals</h1>
-      <p className="mt-1 max-w-3xl text-sm text-muted">
+    <main className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-4 py-6 sm:px-8">
+      <PageHeader title="Evals">
         Checks that run on every saved run. All are free except the grounding judge, which is one Claude call per run. Grounding checks guard
         against the main risk of this app: a resume line that isn&rsquo;t true.
-      </p>
-      {error && <p className="mt-4 rounded-md border border-bad px-3 py-2 text-sm text-bad">{error}</p>}
-      {!rows && <p className="mt-6 text-sm text-muted">Loading…</p>}
+      </PageHeader>
+      {error && <Notice tone="fail">{error}</Notice>}
+      {!rows && <p className="streaming text-muted">Loading evals…</p>}
 
       {rows && (
-        <section className="mt-6 rounded-lg border border-border bg-surface p-4">
-          <h2 className="mb-3 text-sm font-semibold">Suite: pass rate across {rows.length} runs</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <tbody>
-                {[...suite.entries()].map(([k, v]) => {
-                  const rate = v.total ? v.pass / v.total : 0;
-                  return (
-                    <tr key={k} className="border-t border-border">
-                      <td className="py-1.5 pr-3 font-medium">{k}</td>
-                      <td className="py-1.5 pr-3 text-xs text-muted">{DESCRIPTIONS[k] ?? ""}</td>
-                      <td className="w-40 py-1.5">
-                        <div className="h-1.5 rounded bg-background">
-                          <div className={`h-1.5 rounded ${rate === 1 ? "bg-good" : rate >= 0.5 ? "bg-warn" : "bg-bad"}`} style={{ width: `${rate * 100}%` }} />
-                        </div>
-                      </td>
-                      <td className="w-16 py-1.5 text-right text-xs tabular-nums">
-                        {v.pass}/{v.total}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <section className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2>Suite pass rates</h2>
+            <span className="mono text-sm text-muted">
+              {totals.pass} / {totals.total} checks passed across {rows.length} runs
+            </span>
+          </div>
+          <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]">
+            {checks.map(([k, v]) => {
+              const rate = v.total ? v.pass / v.total : 0;
+              return (
+                <div key={k} className="card flex flex-col gap-2 p-5">
+                  <p className="kpi-label mono">{k}</p>
+                  <p className="kpi-value">
+                    {Math.round(rate * 100)}
+                    <span className="text-lg text-muted">%</span>
+                  </p>
+                  <div className="progress" role="img" aria-label={`${v.pass} of ${v.total} passed`}>
+                    <span style={{ width: `${rate * 100}%`, background: rateTone(rate) }} />
+                  </div>
+                  <p className="mono text-xs text-muted">
+                    {v.pass} / {v.total} runs
+                  </p>
+                  <p className="text-sm text-muted">{DESCRIPTIONS[k] ?? ""}</p>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
 
-      <div className="mt-6 space-y-4">
-        {rows?.map((r) => {
-          const counts = { pass: 0, warn: 0, fail: 0, skip: 0 } as Record<Status, number>;
-          for (const e of r.results) counts[e.status]++;
-          return (
-            <details key={r.id} className="rounded-lg border border-border bg-surface p-4" open={counts.fail > 0}>
-              <summary className="flex cursor-pointer flex-wrap items-center gap-2">
-                <span className="text-sm font-medium">{r.label}</span>
-                <span className="text-xs text-muted">{new Date(r.createdAt).toLocaleString()}</span>
-                <span className="ml-auto flex gap-1">
-                  {(["pass", "warn", "fail"] as Status[]).map((s) =>
-                    counts[s] ? (
-                      <span key={s} className={`rounded border px-1.5 py-0.5 text-xs font-semibold ${TONE[s]}`}>
-                        {counts[s]} {s}
-                      </span>
-                    ) : null,
-                  )}
-                </span>
-              </summary>
-              <ul className="mt-3 space-y-2">
-                {r.results.map((e) => (
-                  <li key={e.id} className="flex gap-3 text-sm">
-                    <span className={`h-fit shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-semibold uppercase ${TONE[e.status]}`}>{e.status}</span>
-                    <span className="min-w-0">
-                      <span className="font-medium">{e.name}</span>
-                      <span className="block whitespace-pre-wrap text-xs text-muted">{e.detail}</span>
+      {rows && rows.length > 0 && (
+        <section className="flex flex-col gap-4">
+          <h2>By run</h2>
+          <div className="card overflow-hidden p-0">
+            {rows.map((r) => {
+              const counts = { pass: 0, warn: 0, fail: 0, skip: 0 } as Record<Status, number>;
+              for (const e of r.results) counts[e.status]++;
+              return (
+                <details key={r.id} className="border-b border-line-subtle last:border-b-0" open={counts.fail > 0}>
+                  <summary className="flex min-h-14 flex-wrap items-center gap-3 px-5 py-3 hover:bg-surface-hover">
+                    <Chevron />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold">{r.label}</span>
+                      <span className="mono block text-xs text-muted">{new Date(r.createdAt).toLocaleString()}</span>
                     </span>
-                  </li>
-                ))}
-              </ul>
-              {r.results.some((e) => e.id === "judge") && (
-                <button
-                  className="mt-3 rounded-md border border-border px-2 py-1 text-xs font-medium disabled:opacity-50"
-                  disabled={judging !== null}
-                  onClick={() => judge(r.id)}
-                >
-                  {judging === r.id ? "Judging…" : "Run grounding judge (1 Claude call)"}
-                </button>
-              )}
-            </details>
-          );
-        })}
-      </div>
+                    <span className="flex gap-1.5">
+                      {(["pass", "warn", "fail"] as Status[]).map((s) =>
+                        counts[s] ? (
+                          <span key={s} className={BADGE[s]}>
+                            {counts[s]} {s}
+                          </span>
+                        ) : null,
+                      )}
+                    </span>
+                  </summary>
+                  <div className="table-scroll px-5 pb-5">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th className="w-20">Result</th>
+                          <th>Check</th>
+                          <th>Detail</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {r.results.map((e) => (
+                          <tr key={e.id}>
+                            <td className="align-top">
+                              <span className={BADGE[e.status]}>{e.status}</span>
+                            </td>
+                            <td className="align-top font-semibold">{e.name}</td>
+                            <td className="align-top text-sm whitespace-pre-wrap text-muted">{e.detail}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {r.results.some((e) => e.id === "judge") && (
+                      <button className="btn mt-4" disabled={judging !== null} onClick={() => judge(r.id)}>
+                        {judging === r.id ? "Judging…" : "Run the grounding judge (1 Claude call)"}
+                      </button>
+                    )}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </main>
   );
 }
