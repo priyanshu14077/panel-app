@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { KnowledgeEvent } from "@/lib/knowledge/cards";
 import { readNdjson } from "@/lib/read-ndjson";
 import { Card, Chevron } from "./ui";
+import { CountUp } from "@/components/motion";
 
 interface RepoRow {
   fullName: string;
@@ -84,13 +85,15 @@ export function KnowledgePanel() {
           <div>
             <dt className="kpi-label">Repos in use</dt>
             <dd className="kpi-value text-xl">
-              {used}
+              <CountUp to={used} duration={800} />
               <span className="text-sm text-muted"> / {k.repos.length}</span>
             </dd>
           </div>
           <div>
             <dt className="kpi-label">Portfolio pages</dt>
-            <dd className="kpi-value text-xl">{k.site ? k.site.pages : 0}</dd>
+            <dd className="kpi-value text-xl">
+              <CountUp to={k.site ? k.site.pages : 0} duration={800} />
+            </dd>
           </div>
           <div>
             <dt className="kpi-label">Built</dt>
