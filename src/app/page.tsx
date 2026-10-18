@@ -1,163 +1,202 @@
 import Link from "next/link";
 import SculptureHero from "@/components/ui/liquid-sculpture-hero";
-import { Verdict } from "./ui";
+import { Bento } from "@/components/landing/bento";
+import { Faq } from "@/components/landing/faq";
+import { FloatingNav } from "@/components/landing/floating-nav";
+import { CountUp } from "@/components/motion";
+import { PanelDemo } from "@/components/landing/panel-demo";
+import { Pipeline } from "@/components/landing/pipeline";
+import { ScreenTour } from "@/components/landing/screen-tour";
+import { Ticker } from "@/components/landing/ticker";
+import { VideoShowcase } from "@/components/landing/video-showcase";
 
 const AREAS = [
-  {
-    href: "/workspace",
-    name: "Workspace",
-    what: "Start a run from a job link. Seven reviewers judge the resume, then it is rebuilt into a one-page PDF with the questions only you can answer.",
-    action: "Start a run",
-  },
-  {
-    href: "/board",
-    name: "Board",
-    what: "Every job you ran, from To apply to Offer. Each card says what is due today: the follow-up, the next outreach step, the thank-you note.",
-    action: "Open the board",
-  },
-  {
-    href: "/evals",
-    name: "Evals",
-    what: "Checks on every run: one page, no placeholders, and every number, skill and link traced back to your resume, profile or repos.",
-    action: "See the checks",
-  },
-  {
-    href: "/usage",
-    name: "Usage & cost",
-    what: "Every Claude call priced from its own token counts, by feature and by run, including what prompt caching saved.",
-    action: "See the spend",
-  },
+  { href: "/workspace", label: "Workspace" },
+  { href: "/board", label: "Board" },
+  { href: "/evals", label: "Evals" },
+  { href: "/usage", label: "Usage & cost" },
 ];
 
-const STEPS = [
-  ["Paste a job link", "YC, Greenhouse, Lever, Ashby or any job page. The posting is saved with the run."],
-  ["Seven reviewers read it alone", "An automated screen, two hiring managers, a rival applicant, the CEO, a 30-second recruiter and a future teammate."],
-  ["It is rebuilt from your own work", "Only facts from your resume, profile, GitHub and portfolio. A line that needs a fact you haven't given is held back and asked about."],
-  ["Send it and track it", "A one-page PDF, the application email, a 10-day outreach sequence, and a card on the board."],
+const PRINCIPLES = [
+  {
+    title: "Only your facts",
+    text: "The rebuild may use your resume, your profile, your repos and your portfolio. Nothing else.",
+    icon: <path d="M4 12.5l5 5L20 6.5" />,
+  },
+  {
+    title: "Held back, then asked",
+    text: "A line that needs a fact you haven't given stays out of the PDF until you answer. Answer \"none\" and it's deleted.",
+    icon: <path d="M12 8v5m0 3.5v.5M5 19h14L12 5 5 19Z" />,
+  },
+  {
+    title: "Traced by evals",
+    text: "Every number, skill and link on the PDF is checked against your sources, and a grounding judge can read each line.",
+    icon: <path d="M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Zm4.6-1.9L20 20" />,
+  },
 ];
 
 export default function Landing() {
   return (
-    <div className="landing">
+    <div className="landing ember">
+      <FloatingNav links={AREAS} />
       <SculptureHero
         src="/hero/panel.png"
         darkSrc="/hero/panel.png"
         mobileSrc="/hero/panel-mobile.png"
         mobileDarkSrc="/hero/panel-mobile.png"
-        imageAlt="Seven resume sheets fanned out, six marked REJECT and the middle one marked PASS"
+        imageAlt="Seven resume sheets fanned out, six marked REJECT and the middle one glowing with PASS"
+        theme="dark"
         brand="Hiring Panel"
         brandMark={<span className="brand-mark" aria-hidden />}
-        navLinks={AREAS.map((a) => ({ label: a.name, href: a.href }))}
+        navLinks={AREAS}
         navCta={null}
         eyebrow=""
         headline="Seven reviewers try to reject your resume."
-        headlineAccent=""
+        headlineAccent="reject your resume."
         body="Then it is rebuilt into one page from work you have actually shipped, with the outreach drafted and every application on one board."
         primaryCta={{ label: "Start a run", href: "/workspace" }}
-        secondaryCta={{ label: "See the board", href: "/board" }}
+        secondaryCta={null}
         hint="Move across the panel"
         hintTouch="Touch the panel"
         background="var(--color-bg)"
         darkBackground="var(--color-bg)"
         textColor="var(--color-text)"
-        accentColor="var(--color-primary)"
+        accentColor="var(--color-accent-text)"
         headingFont="var(--font-display)"
         accentFont="var(--font-display)"
         bodyFont="var(--font-body)"
         loadFonts={false}
         height="min(100svh, 980px)"
+        showCredit={false}
       />
+      <Ticker />
 
-      {/* Same side padding as the hero, so every section starts on its left edge. */}
-      <main className="flex w-full flex-col gap-24 px-[clamp(20px,3.2vw,48px)] pt-16 pb-24">
-        <section aria-labelledby="how" className="grid gap-10 min-[1000px]:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
-          <div>
-            <h2 id="how" className="text-xl">
-              How a run works
-            </h2>
-            <p className="mt-3 max-w-md text-muted">
-              About two minutes and $0.19 on the default profile. Company research and outreach are optional extras.
-            </p>
-          </div>
-          <ol className="grid gap-x-8 gap-y-10 sm:grid-cols-2">
-            {STEPS.map(([title, text], i) => (
-              <li key={title} className="flex flex-col gap-2 border-t border-line pt-5">
-                <span className="mono text-sm text-muted">Step {i + 1}</span>
-                <h3 className="text-lg">{title}</h3>
-                <p className="text-muted">{text}</p>
-              </li>
-            ))}
-          </ol>
+      <main className="lp-main">
+        <section aria-label="Demo video">
+          <VideoShowcase />
         </section>
 
-        <section aria-labelledby="proof" className="card card--sunken grid gap-8 p-8 min-[1000px]:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] min-[1000px]:p-10">
-          <div className="flex flex-col gap-4">
-            <h2 id="proof" className="text-xl">
-              The screen that said no, asked again
+        <section aria-labelledby="panel" className="flex flex-col gap-8">
+          <div className="lp-head">
+            <h2 id="panel" className="lp-h2">
+              Seven reviewers, <span className="hl">each reading alone</span>
             </h2>
-            <p className="max-w-xl text-muted">
-              The automated screen reads the original resume, then reads the rebuild. On a Microsoft posting it went from a rejection to a pass,
-              and the PDF still fit on one page.
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-3" aria-label="Before: REJECT. After: PASS.">
-              <Verdict verdict="REJECT" />
-              <span className="verdict-arrow text-2xl" aria-hidden>
-                →
-              </span>
-              <Verdict verdict="PASS" />
-            </div>
           </div>
-          <dl className="grid grid-cols-2 gap-6 self-end">
-            <div>
-              <dt className="kpi-label">Core run</dt>
-              <dd className="kpi-value kpi-value--cost mono">$0.19</dd>
+          <PanelDemo />
+        </section>
+
+        <section aria-labelledby="screens" className="flex flex-col gap-8">
+          <h2 id="screens" className="lp-h2">
+            Inside <span className="hl">the app</span>
+          </h2>
+          <ScreenTour />
+        </section>
+
+        <section aria-labelledby="how" className="flex flex-col gap-10">
+          <div className="lp-head">
+            <h2 id="how" className="lp-h2">
+              From a job link to <span className="hl">a sent application</span>
+            </h2>
+          </div>
+          <Pipeline />
+        </section>
+
+        <section aria-labelledby="features" className="flex flex-col gap-8">
+          <div className="lp-head">
+            <h2 id="features" className="lp-h2">
+              Everything after <span className="hl">the verdict</span>
+            </h2>
+          </div>
+          <Bento />
+        </section>
+
+        <section aria-label="Measured numbers">
+          <dl className="lp-stats">
+            <div className="lp-stat">
+              <dt>for the panel, rebuild and PDF</dt>
+              <dd>
+                <CountUp to={0.19} decimals={2} prefix="$" />
+              </dd>
             </div>
-            <div>
-              <dt className="kpi-label">Cheaper than the first version</dt>
-              <dd className="kpi-value mono">81%</dd>
+            <div className="lp-stat">
+              <dt>cheaper than the first version</dt>
+              <dd>
+                <CountUp to={81} suffix="%" />
+              </dd>
             </div>
-            <div>
-              <dt className="kpi-label">Reviewers per run</dt>
-              <dd className="kpi-value mono">7</dd>
+            <div className="lp-stat">
+              <dt>cheaper per extra outreach draft, with caching</dt>
+              <dd>
+                <CountUp to={90} suffix="%" />
+              </dd>
             </div>
-            <div>
-              <dt className="kpi-label">Pages, checked by pdfinfo</dt>
-              <dd className="kpi-value mono">1</dd>
+            <div className="lp-stat">
+              <dt>page, checked by pdfinfo</dt>
+              <dd>
+                <CountUp to={1} duration={600} />
+              </dd>
             </div>
           </dl>
         </section>
 
-        <section aria-labelledby="areas" className="flex flex-col gap-8">
-          <div>
-            <h2 id="areas" className="text-xl">
-              Four places to work
+        <section aria-labelledby="honest" className="flex flex-col gap-8">
+          <div className="lp-head">
+            <h2 id="honest" className="lp-h2">
+              Nothing on the resume is <span className="hl">invented</span>
             </h2>
-            <p className="mt-3 max-w-xl text-muted">Everything runs on your machine: your resumes, runs and PDFs stay in your job-hunt folder.</p>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 min-[1100px]:grid-cols-4">
-            {AREAS.map((a) => (
-              <Link
-                key={a.href}
-                href={a.href}
-                className="card group flex flex-col gap-3 p-6 text-ink no-underline transition-colors duration-200 hover:border-primary hover:text-ink"
-              >
-                <h3 className="text-lg">{a.name}</h3>
-                <p className="flex-1 text-sm text-muted">{a.what}</p>
-                <span className="font-semibold text-primary group-hover:underline">{a.action}</span>
-              </Link>
+          <div className="lp-principles">
+            {PRINCIPLES.map((p) => (
+              <article key={p.title} className="lp-principle">
+                <span className="lp-icon" aria-hidden>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    {p.icon}
+                  </svg>
+                </span>
+                <h3 className="text-lg">{p.title}</h3>
+                <p className="text-sm text-muted">{p.text}</p>
+              </article>
             ))}
           </div>
         </section>
 
-        <section className="flex flex-col items-start gap-5 border-t border-line pt-12 min-[800px]:flex-row min-[800px]:items-center min-[800px]:justify-between">
-          <div>
-            <h2 className="text-xl">Have a posting open?</h2>
-            <p className="mt-2 text-muted">Paste the link and the panel starts reading.</p>
+        <section aria-labelledby="faq" className="grid gap-10 min-[1000px]:grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)]">
+          <div className="lp-head">
+            <h2 id="faq" className="lp-h2">
+              <span className="hl">Questions</span>
+            </h2>
           </div>
-          <Link href="/workspace" className="btn btn--accent">
+          <Faq />
+        </section>
+
+        <section aria-labelledby="start" className="lp-cta">
+          <h2 id="start" className="lp-h2 mx-auto">
+            Have a posting <span className="hl">open?</span>
+          </h2>
+          <Link href="/workspace" className="lp-btn">
             Start a run
           </Link>
         </section>
+
+        <footer className="lp-footer">
+          <span className="flex items-center gap-2 font-semibold text-ink">
+            <span className="brand-mark" aria-hidden />
+            Hiring Panel
+          </span>
+          <nav aria-label="Footer">
+            {AREAS.map((a) => (
+              <Link key={a.href} href={a.href}>
+                {a.label}
+              </Link>
+            ))}
+          </nav>
+          <span>
+            Hero by{" "}
+            <a href="https://guglielmogiannattasio.it" target="_blank" rel="noreferrer">
+              guglielmogiannattasio.it
+            </a>
+          </span>
+        </footer>
       </main>
     </div>
   );
