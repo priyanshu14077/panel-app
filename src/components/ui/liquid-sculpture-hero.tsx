@@ -1047,7 +1047,8 @@ export interface SculptureHeroProps {
   headlineAccent?: string
   body?: string
   primaryCta?: SculptureHeroLink
-  secondaryCta?: SculptureHeroLink
+  /** null hides the second link. */
+  secondaryCta?: SculptureHeroLink | null
   hint?: string
   hintTouch?: string
 
