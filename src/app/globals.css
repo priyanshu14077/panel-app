@@ -3,6 +3,8 @@
 @import "./tokens.css" layer(base);
 /* Unlayered: the landing restyles the hero, whose own styles are unlayered too. */
 @import "./landing.css";
+/* The app pages in the Ember theme; in the components layer so utilities still win. */
+@import "./ember-app.css" layer(components);
 
 /* Tailwind reads the semantic tokens; its own palette is switched off so no
    stray hex can reach a component. Names that match a token resolve to it:
