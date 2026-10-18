@@ -80,6 +80,20 @@
   .judge-line--partly { --_support: var(--eval-partly-supported); }
   .judge-line--unsupported { --_support: var(--eval-unsupported); }
 
+  /* Display type is Mona Sans expanded wherever it appears, not only on h1-h3. */
+  .font-display { font-variation-settings: "wdth" var(--display-wdth); }
+  .cost, .limit, .mistake__quote { font-variation-settings: "wdth" var(--mono-wdth); }
+
+  /* Two-tone headings: the phrase that matters, in tangerine. On Ember it is a
+     glowing gradient; elsewhere plain accent text. */
+  .hl { color: var(--color-accent-text); }
+  .ember .hl { background: var(--gradient-accent); -webkit-background-clip: text; background-clip: text;
+               -webkit-text-fill-color: transparent; filter: drop-shadow(0 0 22px var(--aurora-2)); }
+  /* Headline figures take the same treatment; their small units stay muted. */
+  .ember .kpi-value { background: var(--gradient-accent); -webkit-background-clip: text; background-clip: text;
+                      -webkit-text-fill-color: transparent; filter: drop-shadow(0 0 18px var(--aurora-2)); }
+  .ember .kpi-value .text-muted { -webkit-text-fill-color: var(--color-text-muted); }
+
   /* Brand mark: plum square, tangerine dot. */
   .brand-mark { position: relative; width: 28px; height: 28px; border-radius: var(--radius-sm); background: var(--color-primary); flex: none; }
   .brand-mark::after { content: ""; position: absolute; right: 6px; bottom: 6px; width: 8px; height: 8px;
