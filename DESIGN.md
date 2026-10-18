@@ -69,5 +69,14 @@ A dark plum-ground theme ships in `tokens.css` and follows the OS setting; `<htm
 
 Tailwind's `text-xs` … `text-2xl` and `rounded-sm` … `rounded-xl` read the token scale (12/13/18/28/32 px; 8/10/12/16 px radii). Use `min-[N]:` breakpoints only where no `sm:`/`xl:` variant on the same property competes; Tailwind sorts arbitrary breakpoints before named ones.
 
+## The Ember theme: the landing page and the app
+Every page is now Ember: always dark, lit tangerine. Inside `.ember` (on the landing's root and the `(app)` layout), `tokens.css` redefines the semantic tokens (section 6), so utilities and recipes turn ember with no component changes: tangerine is the primary and the accent, plum is a supporting colour, berry is still the only red. Ember replaces rule 3: glow (`--glow-*`), gradients (`--gradient-accent`, `--aurora-*`) and shadows are allowed, but in the app they mark only what is live or won (the active tab, the run button, PASS, a draggable card, a due-today chip). The oat light theme in sections 2 and 3 is kept for reference and no page uses it.
+
+### App pages
+- Styles are in `src/app/ember-app.css`, imported into the components layer so a utility on an element still wins.
+- `.ember` sets its own background and text colour; never rely on `<body>`, which keeps the light values.
+- Motion answers something that just happened: reviewer cards and verdict pills pop in as they stream, board cards rise in with a stagger and columns light up as drop targets, the drawer slides in, KPI figures count up (`CountUp` from `src/components/motion.tsx`), bars measure up from zero, and each run tab fades in. A slow glow drifts behind the content. `prefers-reduced-motion` turns all of it off.
+- Use `.hp-enter` with an inline `--i` index for a staggered entrance, and `.hp-grow` on a bar that should measure up.
+
 ## Landing page (`/`)
 The hero is `src/components/ui/liquid-sculpture-hero.tsx`, a third-party component that keeps its own CSS and hex defaults. Never edit its colours; the landing passes tokens in (`background="var(--color-bg)"`, `textColor="var(--color-text)"`, fonts from `--font-display` / `--font-body`) and restyles its button and links under `.landing` in `globals.css`. Its particle image is `public/hero/*.png`, drawn from tokens in `scripts/hero-art/art.html`; rerun `scripts/hero-art/render.sh` after changing it. One tangerine CTA in the hero ("Start a run"), one in the closing band.
