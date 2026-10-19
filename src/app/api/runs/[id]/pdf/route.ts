@@ -7,14 +7,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
   try {
     const run = await loadRun(id);
-    if (!run.pdf) return new Response("no PDF yet", { status: 404 });
-    const file = path.join(IMPROVED_DIR, safeSegment(run.pdf.folder), path.basename(run.pdf.file));
+    const query = new URL(request.url).searchParams;
+    // ?cv serves the CV instead of the one-page resume.
+    const doc = query.has("cv") ? run.cv : run.pdf;
+    if (!doc) return new Response("no PDF yet", { status: 404 });
+    const file = path.join(IMPROVED_DIR, safeSegment(doc.folder), path.basename(doc.file));
     const data = await fs.readFile(file);
-    const download = new URL(request.url).searchParams.has("download");
+    const download = query.has("download");
     return new Response(data, {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${path.basename(run.pdf.file)}"`,
+        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${path.basename(doc.file)}"`,
         "Cache-Control": "no-store",
       },
     });
