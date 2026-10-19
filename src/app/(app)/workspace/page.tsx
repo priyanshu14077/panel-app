@@ -7,6 +7,7 @@ import type { JobDetails, ProjectIdea, Synthesis } from "@/lib/schemas";
 import type { ResumeOption } from "@/lib/files";
 import { readNdjson } from "@/lib/read-ndjson";
 import { KnowledgePanel } from "@/app/knowledge-panel";
+import { ProjectInterviewTab } from "./project-interview";
 import { RUNS_CHANGED } from "@/app/nav";
 import { CountUp } from "@/components/motion";
 import { Card, Chevron, CopyButton, LimitMeter, Notice, PageHeader, Verdict, WithGaps, isWin, wordCount } from "@/app/ui";
@@ -17,10 +18,11 @@ interface Sources {
   hasProfile: boolean;
   hasKey: boolean;
 }
-type Tab = "panel" | "studio" | "qa" | "email";
+type Tab = "panel" | "interview" | "studio" | "qa" | "email";
 
 const TABS: [Tab, string][] = [
   ["panel", "Panel"],
+  ["interview", "Project interview"],
   ["studio", "Project studio"],
   ["qa", "Application Q&A"],
   ["email", "Outreach & email"],
@@ -78,7 +80,7 @@ function Workspace() {
         setRun(r);
         setError("");
         setPdfVersion((v) => v + 1);
-        setTab(linkedTab === "studio" || linkedTab === "qa" || linkedTab === "email" ? linkedTab : "panel");
+        setTab(linkedTab === "interview" || linkedTab === "studio" || linkedTab === "qa" || linkedTab === "email" ? linkedTab : "panel");
       });
   }, [linked, linkedTab]);
 
@@ -231,6 +233,20 @@ function Workspace() {
                 {showing.synthesis && (
                   <>
                     <Mistakes synthesis={showing.synthesis} />
+                    {showing.synthesis.resume.projects.length > 0 && (
+                      <div className="card card--sunken flex flex-wrap items-center justify-between gap-4 p-5">
+                        <div>
+                          <h2>Refine a project with the agent</h2>
+                          <p className="mt-1 text-sm text-muted">
+                            {showing.synthesis.resume.projects.length} project{showing.synthesis.resume.projects.length === 1 ? "" : "s"} on this resume. The agent
+                            asks about what you built and rewrites the bullets in the posting&rsquo;s words.
+                          </p>
+                        </div>
+                        <button className="btn btn--primary" onClick={() => setTab("interview")}>
+                          Open the project interview
+                        </button>
+                      </div>
+                    )}
                     {showing.synthesis.questions.length > 0 && (
                       <Questions
                         key={showing.synthesis.questions.map((q) => q.id).join()}
@@ -246,6 +262,9 @@ function Workspace() {
               </TwoColumn>
             )}
 
+            {ready && tab === "interview" && (
+              <ProjectInterviewTab run={showing as Run} busy={busy} onApply={(project) => act("project-chat/apply", { project })} />
+            )}
             {ready && tab === "studio" && (
               <Studio
                 run={showing as Run}
