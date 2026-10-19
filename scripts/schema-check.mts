@@ -2,7 +2,7 @@
 // API accepts its grammar. Calls Claude: needs ANTHROPIC_API_KEY exported.
 import { z } from "zod";
 import { askStructured, type Tier } from "../src/lib/claude.ts";
-import { Email, Findings, Ideas, Rebuild, ResumeDoc, Sequence } from "../src/lib/schemas.ts";
+import { Email, Findings, Ideas, ProjectTurn, Rebuild, ResumeDoc, Sequence } from "../src/lib/schemas.ts";
 import { ProjectCard, SiteDigest } from "../src/lib/knowledge/cards.ts";
 
 const Shortlist = z.object({ repos: z.array(z.string()) });
@@ -16,6 +16,7 @@ const checks: [string, z.ZodType, Tier][] = [
   ["Ideas", Ideas, "writer"],
   ["Email", Email, "writer"],
   ["Sequence", Sequence, "writer"],
+  ["ProjectTurn", ProjectTurn, "writer"],
 ];
 for (const [name, schema, tier] of checks) {
   try {
