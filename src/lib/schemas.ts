@@ -28,6 +28,19 @@ export type Question = z.infer<typeof Question>;
 export const Rebuild = z.object({ resume: ResumeDoc, questions: z.array(Question) });
 export type Rebuild = z.infer<typeof Rebuild>;
 
+// One turn of the project interview: a question, or a proposal for the project.
+export const ProjectTurn = z.object({
+  message: z.string().describe("Your next question, or, when ready, one or two sentences on what changed."),
+  facts: z.array(z.string()).describe("New facts the candidate stated in their latest message, each a short standalone sentence naming the project. Empty when none."),
+  ready: z.boolean().describe("True when this turn carries the proposal."),
+  name: z.string(),
+  stack: z.string(),
+  url: z.string(),
+  bullets: z.array(z.string()),
+  keywords: z.array(z.object({ keyword: z.string(), basis: z.enum(["reworded", "confirmed"]) })),
+});
+export type ProjectTurn = z.infer<typeof ProjectTurn>;
+
 export const Findings = z.object({
   company: z.string(),
   role: z.string(),
