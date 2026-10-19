@@ -22,6 +22,28 @@ export const ResumeDoc = z.object({
 });
 export type ResumeDoc = z.infer<typeof ResumeDoc>;
 
+// The knowledge-base items worth adding to a CV for one posting, best first.
+export const CvPicks = z.object({
+  picks: z.array(
+    z.object({
+      id: z.string().describe("The item's exact id from the list."),
+      relevance: z.enum(["high", "medium", "low"]),
+      reason: z.string().describe("One short line: what in the posting this item answers."),
+    }),
+  ),
+});
+export type CvPicks = z.infer<typeof CvPicks>;
+
+export interface CvOption {
+  id: string;
+  type: "repo" | "page";
+  title: string;
+  url: string;
+  summary: string;
+  relevance: CvPicks["picks"][number]["relevance"];
+  reason: string;
+}
+
 export const Question = z.object({ id: z.string(), question: z.string(), why: z.string() });
 export type Question = z.infer<typeof Question>;
 
