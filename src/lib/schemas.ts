@@ -10,7 +10,7 @@ export const NEEDS = /\[\[needs:([a-z0-9-]+)\]\]/;
 const line = "A finished resume line. If it depends on a fact the candidate has not given, end it with [[needs:<question-id>]].";
 
 export const ResumeDoc = z.object({
-  headline: z.string(),
+  headline: z.string().describe("The role title shown under the name, e.g. \"Backend Engineer\": the posting's title, trimmed of seniority or team the candidate's experience does not support. No company name."),
   summary: z.array(z.string().describe(line)),
   order: z.array(z.enum(["education", "experience", "projects", "skills"])),
   education: z.array(z.object({ school: z.string(), location: z.string(), degree: z.string(), dates: z.string(), details: z.array(z.string()) })),

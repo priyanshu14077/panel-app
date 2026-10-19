@@ -28,15 +28,18 @@ function itemList(lines: string[]): string {
   return `      \\resumeItemListStart\n${lines.map((l) => `        \\resumeItem{${escapeTex(l)}}`).join("\n")}\n      \\resumeItemListEnd\n`;
 }
 
-function heading(c: Contact): string {
-  const first = [escapeTex(c.location), escapeTex(c.phone), c.email && href(`mailto:${c.email}`, c.email)];
+// Name, then the target role title, then contact. Location sits at the end of
+// the links line so the line under the name reads as the role.
+function heading(c: Contact, headline: string): string {
+  const first = [escapeTex(c.phone), c.email && href(`mailto:${c.email}`, c.email)];
   const portfolio = c.links.find((l) => l.label === "portfolio");
   if (portfolio) first.push(href(portfolio.url, displayUrl(portfolio.url)));
-  const second = c.links.filter((l) => l.label !== "portfolio").map((l) => href(l.url, displayUrl(l.url)));
+  const second = [...c.links.filter((l) => l.label !== "portfolio").map((l) => href(l.url, displayUrl(l.url))), escapeTex(c.location)];
+  const title = headline.trim() ? `    \\large ${escapeTex(headline.trim())} \\\\ \\vspace{2pt}\n` : "";
   return `\\begin{center}
     \\textbf{\\Huge \\scshape ${escapeTex(c.name)}} \\\\ \\vspace{1pt}
-    \\small ${first.filter(Boolean).join(" $|$ ")} \\\\
-    ${second.join(" $|$\n    ")}
+${title}    \\small ${first.filter(Boolean).join(" $|$ ")} \\\\
+    ${second.filter(Boolean).join(" $|$\n    ")}
 \\end{center}
 `;
 }
@@ -87,7 +90,7 @@ export async function renderLatex(doc: ResumeDoc, contact: Contact): Promise<str
   const preamble = template.slice(0, template.indexOf("\\begin{document}") + "\\begin{document}".length);
   const summary = known(doc.summary).join(" ");
   const body = [
-    heading(contact),
+    heading(contact, doc.headline),
     summary ? `\\section{Summary}\n\\small{${escapeTex(summary)}}\n\n` : "",
     ...doc.order.map((s) => section(doc, s)),
   ].join("\n");
@@ -101,7 +104,7 @@ export function renderText(doc: ResumeDoc, contact: Contact, includeOpen: boolea
   const out: string[] = [
     `# ${contact.name}`,
     doc.headline,
-    [contact.location, contact.phone, contact.email, ...contact.links.map((l) => displayUrl(l.url))].filter(Boolean).join(" · "),
+    [contact.phone, contact.email, ...contact.links.map((l) => displayUrl(l.url)), contact.location].filter(Boolean).join(" · "),
   ];
   const summary = pick(doc.summary);
   if (summary.length) out.push("", "## Summary", summary.join(" "));
