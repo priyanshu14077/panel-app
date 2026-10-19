@@ -1,13 +1,13 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { askResearch, askStructured, askText, streamChat } from "./claude";
-import { compileResume, pdfName, type PdfCheck } from "./compile";
+import { compileResume, pdfName, type DocKind, type PdfCheck } from "./compile";
 import { appendProfileSection, improvedFolderOf, parseContact, readProfile, resumeText } from "./files";
-import { knowledgeDigest, loadKnowledge, shortlistRepos } from "./knowledge/cards";
+import { knowledgeDigest, knowledgeItems, loadKnowledge, shortlistRepos } from "./knowledge/cards";
 import { renderLatex, renderText } from "./latex";
 import { IMPROVED_DIR, PANEL_DIR, safeSegment } from "./paths";
 import { REVIEWERS, REVIEWER_SYSTEM, SCREEN_BRIEF, reviewerPrompt, verdictOf, type ReviewerId } from "./reviewers";
-import { Email, Findings, Ideas, JobDetails, LIMITS, Rebuild, ResumeDoc, Sequence, STAGES, type Board, type ProjectIdea, type Stage, type Synthesis, type Writeup } from "./schemas";
+import { CvPicks, Email, Findings, Ideas, JobDetails, LIMITS, NEEDS, ProjectTurn, Rebuild, ResumeDoc, Sequence, STAGES, type Board, type CvOption, type ProjectIdea, type Stage, type Synthesis, type Writeup } from "./schemas";
 import { importJob } from "./import-job";
 
 export interface Review {
@@ -40,6 +40,21 @@ export interface AddedProject {
   details: string;
 }
 
+export interface ProjectProposal {
+  name: string;
+  stack: string;
+  url: string;
+  bullets: string[];
+  keywords: ProjectTurn["keywords"];
+}
+
+// An interview about one resume project, keyed by the project's name.
+export interface ProjectChat {
+  turns: ChatTurn[];
+  facts: string[];
+  proposal?: ProjectProposal;
+}
+
 export interface DraftedSequence extends Sequence {
   target: string;
   createdAt: string;
@@ -60,10 +75,14 @@ export interface Run {
   synthesis?: Synthesis;
   rescreens: Screen[];
   pdf?: { folder: string; file: string; check: PdfCheck };
+  // The longer CV, built on request from the resume plus knowledge-base picks.
+  cv?: { folder: string; file: string; check: PdfCheck; picks: string[] };
+  cvOptions?: CvOption[];
   companyBrief?: string;
   companyResearchedAt?: string;
   companyIdeas?: ProjectIdea[];
   chat?: ChatTurn[];
+  projectChats?: Record<string, ProjectChat>;
   emails?: DraftedEmail[];
   outreach?: DraftedSequence[];
   judge?: import("./evals").JudgeResult;
@@ -80,6 +99,7 @@ export type RunEvent =
   | { type: "synthesis"; synthesis: Synthesis }
   | { type: "rescreen"; screen: Screen }
   | { type: "pdf"; pdf: NonNullable<Run["pdf"]> }
+  | { type: "cv"; cv: NonNullable<Run["cv"]> }
   | { type: "company"; brief: string; ideas: ProjectIdea[] }
   | { type: "imported"; folder: string; title: string; company: string }
   | { type: "details"; details: JobDetails }
@@ -129,7 +149,7 @@ const FINDINGS_SYSTEM = `You run the merge stage of a seven-member hiring panel.
 
 const REBUILD_SYSTEM = `You rebuild a resume for one job posting, fixing every mistake the hiring panel found. ${FACT_RULES}
 
-Reword and reorder freely, and use the posting's own vocabulary wherever an existing fact supports it. When a fix needs a fact you do not have, still write the best line, end it with [[needs:<question-id>]], and add that question to "questions" (short kebab-case id). Never ask what the profile already answers. Leave out the candidate's name and contact details; they are added separately. Use "" for a missing url. Keep it to one page: at most 5 bullets per role and 2-3 per project.
+Reword and reorder freely, and use the posting's own vocabulary wherever an existing fact supports it. When a fix needs a fact you do not have, still write the best line, end it with [[needs:<question-id>]], and add that question to "questions" (short kebab-case id). Never ask what the profile already answers. Set "headline" to the role title for this posting; it is printed under the name. Leave out the candidate's name and contact details; they are added separately. Use "" for a missing url. Keep it to one page: at most 5 bullets per role and 2-3 per project.
 
 Choose the Projects section from the whole knowledge base, not just the projects already on the resume: pick the 2-4 repos that best answer this posting and the panel's gaps, preferring repos with real commits by the candidate and higher maturity, and use the repo URL from the knowledge base. A repo of kind "template-or-copy" or "learning" is not evidence of professional skill. Work in an employer's org repo supports that employer's experience bullets, not a separate project. The portfolio's case studies and posts are the candidate's own writing; their technical details may back a bullet, but a claim found only on the portfolio needs a question. Projects the candidate added in the app (see the profile) are theirs: mark one "(in progress)" in its name if its status says so.`;
 
@@ -142,6 +162,12 @@ This time, lean every idea toward the hiring company: mirror its product, its cu
 const RESEARCH_SYSTEM = `You research a company for a job applicant. Use web search. Report, in plain bullet points with source URLs: what the company sells and to whom; its main product surfaces and integrations; its tech stack and engineering signals (engineering blog, job posts, GitHub); recent launches or news from the last 12 months; and what the team for this role likely builds. Say "unknown" rather than guess.`;
 
 const REVISE_SYSTEM = `You update a resume after the candidate answered open questions. For every line that ends with [[needs:<id>]] for an answered question: rewrite the line using the answer and remove the marker. If the answer is "none", "no" or "skip", delete that line. Leave lines for unanswered questions unchanged. Never add facts that are not in the answers, the profile or the existing resume. Keep it to one page.`;
+
+const CV_PICKS_SYSTEM = `You help a candidate choose what to add to a CV for one job posting. From the list of their repositories and portfolio pages, pick up to 15 items that best prove fit for this posting, most relevant first. Prefer real products, client work and repos with many commits by the candidate over learning repos and templates. Leave out anything with no link to the posting. Return exact ids from the list.`;
+
+const CV_SYSTEM = `You write a CV for one job posting: a fuller version of the candidate's tailored resume, up to two pages. ${FACT_RULES}
+
+Start from the tailored resume: keep its headline, experience, education and order, and keep its best lines. Then go deeper: up to 6 bullets per role, and a Projects entry for each repository the candidate selected (3-4 bullets each, the repo URL from the knowledge base), most relevant to the posting first. Keep the resume's own projects unless a selected item covers the same work. A selected portfolio page becomes a project when it describes something the candidate built, and otherwise backs bullets elsewhere. Use the posting's vocabulary wherever an existing fact supports it. Never write a line that needs a fact you do not have: leave it out. Leave out the candidate's name and contact details; they are added separately. Use "" for a missing url.`;
 
 const CHAT_SYSTEM = `You help a job candidate with one application: answering application-form questions, tightening answers, and preparing for screening calls. Write as the candidate, in the first person, in crisp technical language. No filler, no clichés ("passionate", "leverage", "delve", "thrilled", "I'm excited to"), no generic claims a reader can't check. Prefer specific systems, numbers and decisions from the candidate's real work.
 
@@ -208,15 +234,17 @@ const TRIMS: ((d: ResumeDoc) => boolean)[] = [
   (d) => d.projects.some((p) => p.bullets.length > 1) && !!d.projects.find((p) => p.bullets.length > 1)!.bullets.pop(),
 ];
 
-// Compiles the PDF, trimming the lowest-ranked lines until it fits one page.
-// Only the PDF is trimmed: the full rebuild stays in the run for later edits.
-export async function compileFitted(doc: ResumeDoc, profile: string, folder: string): Promise<NonNullable<Run["pdf"]>> {
+// Compiles the PDF, trimming the lowest-ranked lines until it fits one page
+// (two for a CV). Only the PDF is trimmed: the full rebuild stays in the run
+// for later edits.
+export async function compileFitted(doc: ResumeDoc, profile: string, folder: string, kind: DocKind = "Resume"): Promise<NonNullable<Run["pdf"]>> {
   const contact = parseContact(profile);
-  await archivePrevious(path.join(IMPROVED_DIR, folder), pdfName(contact.name));
+  const maxPages = kind === "CV" ? 2 : 1;
+  await archivePrevious(path.join(IMPROVED_DIR, folder), pdfName(contact.name, kind));
   const fitted: ResumeDoc = structuredClone(doc);
   for (let attempt = 0; ; attempt++) {
-    const { pdf, check } = await compileResume(path.join(IMPROVED_DIR, folder), await renderLatex(fitted, contact), contact.name);
-    if (check.pages <= 1 || attempt >= 12 || !TRIMS.some((cut) => cut(fitted))) return { folder, file: path.basename(pdf), check };
+    const { pdf, check } = await compileResume(path.join(IMPROVED_DIR, folder), await renderLatex(fitted, contact), contact.name, kind);
+    if (check.pages <= maxPages || attempt >= 12 || !TRIMS.some((cut) => cut(fitted))) return { folder, file: path.basename(pdf), check };
   }
 }
 
@@ -522,6 +550,139 @@ export async function* chat(id: string, message: string): AsyncGenerator<{ type:
   } catch (err) {
     yield { type: "error", message: errorMessage(err) };
   }
+}
+
+// ---------- CV ----------
+
+// Ranks the knowledge base against the posting so the candidate can choose
+// what the CV adds. Kept on the run: the menu only changes when asked.
+export async function cvOptions(id: string, refresh = false): Promise<CvOption[]> {
+  const run = await loadRun(id);
+  if (run.cvOptions && !refresh) return run.cvOptions;
+  const items = knowledgeItems(await loadKnowledge());
+  if (!items.length) return [];
+  const { picks } = await askStructured({
+    tier: "fast",
+    system: CV_PICKS_SYSTEM,
+    prompt: `<job_posting>\n${run.jobText}\n</job_posting>\n\n<items>\n${items.map((i) => `${i.id}: ${i.menu}`).join("\n")}\n</items>`,
+    schema: CvPicks,
+    effort: "low",
+    tag: { runId: run.id, action: "cv-options" },
+  });
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const seen = new Set<string>();
+  run.cvOptions = picks.flatMap((p) => {
+    const item = byId.get(p.id);
+    if (!item || seen.has(p.id)) return [];
+    seen.add(p.id);
+    return [{ id: item.id, type: item.type, title: item.title, url: item.url, summary: item.summary, relevance: p.relevance, reason: p.reason }];
+  });
+  await saveRun(run);
+  return run.cvOptions;
+}
+
+export async function createCv(id: string, picks: string[]): Promise<AsyncGenerator<RunEvent>> {
+  const run = await loadRun(id);
+  return guarded(run, async function* () {
+    if (!run.synthesis) throw new Error("Finish the run before creating a CV.");
+    const [profile, knowledge] = await Promise.all([readProfile(), loadKnowledge()]);
+    const contact = parseContact(profile);
+    const items = knowledgeItems(knowledge).filter((i) => picks.includes(i.id));
+    const repos = items.filter((i) => i.type === "repo").map((i) => i.id);
+    const pages = items.filter((i) => i.type === "page").map((i) => i.id);
+    yield { type: "stage", stage: `Writing the CV with ${items.length} item${items.length === 1 ? "" : "s"} from your knowledge base` };
+    const doc = await askStructured({
+      system: CV_SYSTEM,
+      prompt: [
+        `<job_posting>\n${run.jobText}\n</job_posting>`,
+        `<tailored_resume>\n${renderText(run.synthesis.resume, contact, false)}\n</tailored_resume>`,
+        `<candidate_profile>\n${profile}\n</candidate_profile>`,
+        `<selected_knowledge>\n${items.length ? knowledgeDigest(knowledge, repos, pages) : "(none selected)"}\n</selected_knowledge>`,
+      ].join("\n\n"),
+      schema: ResumeDoc,
+      effort: "medium",
+      tier: "writer",
+      tag: { runId: run.id, action: "cv" },
+    });
+    yield { type: "stage", stage: "Compiling the CV" };
+    const folder = run.pdf?.folder ?? run.outputFolder ?? outputFolder(run.synthesis, run.createdAt);
+    run.cv = { ...(await compileFitted(doc, profile, folder, "CV")), picks: items.map((i) => i.id) };
+    yield { type: "cv", cv: run.cv };
+    run.error = undefined;
+    await saveRun(run);
+    yield { type: "done", run };
+  });
+}
+
+// ---------- project interview ----------
+
+const PROJECT_CHAT_SYSTEM = `You refine one project on a candidate's resume for one job posting by interviewing the candidate. Compare the project with the posting, the panel's mistakes and the knowledge base (the project's repo card, if it has one).
+
+Ask one short, specific question per turn: the one whose answer would most improve this project's fit. Ask about what the candidate personally built, scale or measured results, or whether they used a skill or tool the posting names. Ask at most four questions in all; propose sooner if you have enough or the candidate asks. If the candidate gives an instruction instead of an answer, follow it.
+
+Wording: rephrase facts the project, the resume, the profile or the knowledge base already show into the posting's vocabulary without asking (say "REST API" when the repo shows a REST API). A skill, tool, number or result none of those show goes in only if the candidate confirmed it in this conversation; otherwise ask. Never invent numbers or results. A profile answer of "none" means the candidate lacks that skill.
+
+When ready, set ready to true and fill name, stack and url (keep the existing ones unless the candidate corrected them), 2-3 one-line bullets, strongest first, in the posting's vocabulary, and keywords: each posting keyword you added or brought forward, with basis "reworded" (from facts already shown) or "confirmed" (the candidate said so here). Use message to say in one or two sentences what changed. When not ready, leave name, stack, url, bullets and keywords empty and put the question in message.
+
+keywords: only distinct terms the posting itself uses (tools, practices, domains), at most six; not generic words like "data" or "testing".
+
+facts: only new facts about the candidate's work that they stated in their latest message (what they built, their role, scale, results, tools they used), as short standalone sentences that name the project. Never record remarks about the conversation, such as declining to answer or asking for a rewrite. Plain technical language; no filler or flattery.`;
+
+const projectOf = (run: Run, name: string) => run.synthesis?.resume.projects.find((p) => p.name === name);
+
+// One interview turn. With no message, the agent opens with its first question.
+export async function projectChatTurn(id: string, project: string, message?: string): Promise<ProjectChat> {
+  const run = await loadRun(id);
+  const s = run.synthesis;
+  const current = s && projectOf(run, project);
+  if (!s || !current) throw new Error("That project is not on this run's resume.");
+  const ctx = await candidateContext(run);
+  const chat: ProjectChat = run.projectChats?.[project] ?? { turns: [], facts: [] };
+  const turns = message ? [...chat.turns, { role: "user" as const, text: message }] : chat.turns;
+  const transcript = turns.map((t) => `<${t.role}>\n${t.text}\n</${t.role}>`).join("\n");
+  const entry = { ...current, bullets: current.bullets.map((b) => b.replace(NEEDS, "").trim()) };
+  const turn = await askStructured({
+    tier: "writer",
+    system: PROJECT_CHAT_SYSTEM,
+    // The run's material is the cached prefix, so each turn re-reads it at a tenth of the price.
+    context: `${contextBlock(run, ctx, improvedText(run, ctx))}\n\n${mistakesBlock(s)}`,
+    prompt: `<project>\n${JSON.stringify(entry)}\n</project>\n\n<conversation>\n${transcript || "(not started: open with your first question)"}\n</conversation>`,
+    schema: ProjectTurn,
+    effort: "medium",
+    tag: { runId: run.id, action: "project-chat" },
+  });
+  const next: ProjectChat = {
+    turns: [...turns, { role: "assistant", text: turn.message }],
+    facts: [...chat.facts, ...turn.facts.map((f) => f.trim()).filter(Boolean)],
+    proposal: turn.ready && turn.bullets.length ? { name: turn.name || current.name, stack: turn.stack || current.stack, url: turn.url || current.url, bullets: turn.bullets, keywords: turn.keywords } : undefined,
+  };
+  run.projectChats = { ...run.projectChats, [project]: next };
+  await saveRun(run);
+  return next;
+}
+
+export async function discardProjectChat(id: string, project: string): Promise<void> {
+  const run = await loadRun(id);
+  if (run.projectChats) delete run.projectChats[project];
+  await saveRun(run);
+}
+
+// Accepts the proposal: the project is replaced, the facts go to the profile,
+// and the PDF is recompiled and re-screened.
+export async function applyProjectChat(id: string, project: string): Promise<AsyncGenerator<RunEvent>> {
+  const run = await loadRun(id);
+  return guarded(run, async function* () {
+    const s = run.synthesis;
+    const chat = run.projectChats?.[project];
+    const index = s?.resume.projects.findIndex((p) => p.name === project) ?? -1;
+    if (!s || index < 0 || !chat?.proposal) throw new Error("There is no proposal for that project to apply.");
+    const { name, stack, url, bullets } = chat.proposal;
+    s.resume.projects[index] = { name, stack, url, bullets };
+    await appendProfileSection("Project details given in the panel app", chat.facts);
+    delete run.projectChats![project];
+    yield { type: "synthesis", synthesis: s };
+    yield* finish(run);
+  });
 }
 
 export async function clearChat(id: string): Promise<void> {

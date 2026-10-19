@@ -205,9 +205,35 @@ export async function shortlistRepos(k: Knowledge | null, job: string, tag: Usag
   }
 }
 
+// Everything a CV could draw on: included repos with a card, and portfolio
+// pages. Ids are repo full names and page urls.
+export function knowledgeItems(k: Knowledge | null): { id: string; type: "repo" | "page"; title: string; url: string; summary: string; menu: string }[] {
+  if (!k) return [];
+  const repos = Object.values(k.repos)
+    .filter((e) => e.included && e.card)
+    .map((e) => ({
+      id: e.meta.fullName,
+      type: "repo" as const,
+      title: e.meta.fullName.split("/").pop()!,
+      url: e.meta.url,
+      summary: e.card!.summary,
+      menu: `${e.card!.summary} [${e.card!.kind}, ${e.card!.maturity}, ${e.userCommits} commits] Stack: ${e.card!.stack.join(", ")}`,
+    }));
+  const pages = (k.site?.pages ?? []).map((p) => ({
+    id: p.url,
+    type: "page" as const,
+    title: p.title,
+    url: p.url,
+    summary: p.summary,
+    menu: `Portfolio page. ${p.summary} Facts: ${p.technicalFacts.slice(0, 4).join("; ")}`,
+  }));
+  return [...repos, ...pages];
+}
+
 // Compact text the writing steps read: included repos with a card, cut to
-// the run's shortlist when there is one.
-export function knowledgeDigest(k: Knowledge | null, only?: string[]): string {
+// the run's shortlist when there is one. `pages` cuts the portfolio the same
+// way; an empty list leaves it out.
+export function knowledgeDigest(k: Knowledge | null, only?: string[], pages?: string[]): string {
   if (!k) return "(no knowledge base built yet)";
   const repos = Object.values(k.repos)
     .filter((e) => e.included && e.card && (!only || only.includes(e.meta.fullName)))
@@ -226,8 +252,9 @@ export function knowledgeDigest(k: Knowledge | null, only?: string[]): string {
         .filter(Boolean)
         .join("\n");
     });
-  const site = k.site
+  const site = k.site && (!pages || pages.length)
     ? `<portfolio url="${k.site.url}">\nPositioning: ${k.site.positioning}\nClaims: ${k.site.claims.join(" | ")}\n${k.site.pages
+        .filter((p) => !pages || pages.includes(p.url))
         .map((p) => `Page ${p.url} (${p.title}): ${p.summary} Facts: ${p.technicalFacts.join("; ")}`)
         .join("\n")}\n</portfolio>`
     : "";

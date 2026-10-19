@@ -10,7 +10,7 @@ export const NEEDS = /\[\[needs:([a-z0-9-]+)\]\]/;
 const line = "A finished resume line. If it depends on a fact the candidate has not given, end it with [[needs:<question-id>]].";
 
 export const ResumeDoc = z.object({
-  headline: z.string(),
+  headline: z.string().describe("The role title shown under the name, e.g. \"Backend Engineer\": the posting's title, trimmed of seniority or team the candidate's experience does not support. No company name."),
   summary: z.array(z.string().describe(line)),
   order: z.array(z.enum(["education", "experience", "projects", "skills"])),
   education: z.array(z.object({ school: z.string(), location: z.string(), degree: z.string(), dates: z.string(), details: z.array(z.string()) })),
@@ -22,11 +22,46 @@ export const ResumeDoc = z.object({
 });
 export type ResumeDoc = z.infer<typeof ResumeDoc>;
 
+// The knowledge-base items worth adding to a CV for one posting, best first.
+export const CvPicks = z.object({
+  picks: z.array(
+    z.object({
+      id: z.string().describe("The item's exact id from the list."),
+      relevance: z.enum(["high", "medium", "low"]),
+      reason: z.string().describe("One short line: what in the posting this item answers."),
+    }),
+  ),
+});
+export type CvPicks = z.infer<typeof CvPicks>;
+
+export interface CvOption {
+  id: string;
+  type: "repo" | "page";
+  title: string;
+  url: string;
+  summary: string;
+  relevance: CvPicks["picks"][number]["relevance"];
+  reason: string;
+}
+
 export const Question = z.object({ id: z.string(), question: z.string(), why: z.string() });
 export type Question = z.infer<typeof Question>;
 
 export const Rebuild = z.object({ resume: ResumeDoc, questions: z.array(Question) });
 export type Rebuild = z.infer<typeof Rebuild>;
+
+// One turn of the project interview: a question, or a proposal for the project.
+export const ProjectTurn = z.object({
+  message: z.string().describe("Your next question, or, when ready, one or two sentences on what changed."),
+  facts: z.array(z.string()).describe("New facts the candidate stated in their latest message, each a short standalone sentence naming the project. Empty when none."),
+  ready: z.boolean().describe("True when this turn carries the proposal."),
+  name: z.string(),
+  stack: z.string(),
+  url: z.string(),
+  bullets: z.array(z.string()),
+  keywords: z.array(z.object({ keyword: z.string(), basis: z.enum(["reworded", "confirmed"]) })),
+});
+export type ProjectTurn = z.infer<typeof ProjectTurn>;
 
 export const Findings = z.object({
   company: z.string(),
