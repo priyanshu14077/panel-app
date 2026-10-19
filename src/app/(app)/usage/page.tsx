@@ -41,6 +41,8 @@ const ACTION_LABELS: Record<string, string> = {
   "project-chat": "Project interviews",
   shortlist: "Repo shortlist",
   details: "Job details",
+  "cv-options": "CV picks",
+  cv: "CV",
 };
 
 // Which tier each feature runs on, for the cost-by-tier colours.
@@ -62,6 +64,8 @@ const TIER_OF: Record<string, Tier> = {
   chat: "writer",
   email: "writer",
   eval: "writer",
+  "cv-options": "fast",
+  cv: "writer",
   "company-research": "research",
 };
 const TIERS: { id: Tier; label: string; series: string }[] = [
