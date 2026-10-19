@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { AddedProject, ChatTurn, DraftedEmail, DraftedSequence, Review, Run, RunEvent, Screen } from "@/lib/pipeline";
-import type { JobDetails, ProjectIdea, Synthesis } from "@/lib/schemas";
+import type { CvOption, JobDetails, ProjectIdea, Synthesis } from "@/lib/schemas";
 import type { ResumeOption } from "@/lib/files";
 import { readNdjson } from "@/lib/read-ndjson";
 import { KnowledgePanel } from "@/app/knowledge-panel";
@@ -55,6 +55,7 @@ function Workspace() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [pdfVersion, setPdfVersion] = useState(0);
+  const [cvOpen, setCvOpen] = useState(false);
   // The run a stream is writing to, so opening another run mid-stream is safe.
   const streamId = useRef<string | null>(null);
   const shownId = useRef<string | undefined>(undefined);
@@ -80,6 +81,7 @@ function Workspace() {
         if (!r) return;
         setRun(r);
         setError("");
+        setCvOpen(false);
         setPdfVersion((v) => v + 1);
         setTab(linkedTab === "interview" || linkedTab === "studio" || linkedTab === "qa" || linkedTab === "email" ? linkedTab : "panel");
       });
@@ -112,6 +114,10 @@ function Workspace() {
           break;
         case "pdf":
           patch((r) => ({ ...r, pdf: e.pdf }));
+          setPdfVersion((v) => v + 1);
+          break;
+        case "cv":
+          patch((r) => ({ ...r, cv: e.cv }));
           setPdfVersion((v) => v + 1);
           break;
         case "company":
@@ -206,7 +212,15 @@ function Workspace() {
 
       {showing && (
         <>
-          <RunHeader run={showing} onNew={newRun} busy={busy} />
+          <RunHeader
+            run={showing}
+            onNew={newRun}
+            busy={busy}
+            onCv={() => {
+              setCvOpen(true);
+              setTab("panel");
+            }}
+          />
           <StatStrip run={showing} busy={busy} />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div role="tablist" aria-label="Run sections" className="segmented">
@@ -226,6 +240,16 @@ function Workspace() {
 
           {/* Keyed by tab so each switch fades the new panel in. */}
           <div key={tab} className="hp-fade flex flex-col gap-6">
+            {ready && tab === "panel" && cvOpen && (
+              <CvBuilder
+                key={showing.id}
+                run={showing as Run}
+                busy={busy}
+                version={pdfVersion}
+                onBuild={(picks) => act("cv", { picks })}
+                onClose={() => setCvOpen(false)}
+              />
+            )}
             {tab === "panel" && (
               <TwoColumn
                 side={showing.pdf && showing.id ? <PdfPanel runId={showing.id} pdf={showing.pdf} version={pdfVersion} /> : showing.details && <DetailsCard details={showing.details} />}
@@ -475,7 +499,7 @@ function NewRun({
 
 // ---------- Run header ----------
 
-function RunHeader({ run, onNew, busy }: { run: Partial<Run>; onNew: () => void; busy: boolean }) {
+function RunHeader({ run, onNew, onCv, busy }: { run: Partial<Run>; onNew: () => void; onCv: () => void; busy: boolean }) {
   const job = run.synthesis?.job ?? run.details;
   return (
     <header className="flex flex-wrap items-end justify-between gap-4">
@@ -491,6 +515,16 @@ function RunHeader({ run, onNew, busy }: { run: Partial<Run>; onNew: () => void;
           <a className="btn" href={`/api/runs/${run.id}/pdf?download`}>
             Download PDF
           </a>
+        )}
+        {run.cv && run.id && (
+          <a className="btn" href={`/api/runs/${run.id}/pdf?cv&download`}>
+            Download CV
+          </a>
+        )}
+        {run.pdf && run.synthesis && (
+          <button className="btn btn--primary" disabled={busy} onClick={onCv}>
+            {run.cv ? "Rebuild CV" : "Create CV"}
+          </button>
         )}
         <button className="btn" disabled={busy} onClick={onNew}>
           New run
@@ -729,14 +763,15 @@ function Questions({ synthesis, busy, onSubmit }: { synthesis: Synthesis; busy: 
   );
 }
 
-function PdfPanel({ runId, pdf, version }: { runId: string; pdf: NonNullable<Run["pdf"]>; version: number }) {
-  const src = `/api/runs/${runId}/pdf?v=${version}`;
+function PdfPanel({ runId, pdf, version, cv = false }: { runId: string; pdf: NonNullable<Run["pdf"]>; version: number; cv?: boolean }) {
+  const src = `/api/runs/${runId}/pdf?v=${version}${cv ? "&cv" : ""}`;
+  const title = cv ? "CV" : "Improved resume";
   const pages = pdf.check.pages;
   const [full, setFull] = useState(false);
   const close = useCallback(() => setFull(false), []);
   return (
     <Card
-      title="Improved resume"
+      title={title}
       action={
         <span className="flex items-center gap-3">
           <a className="link-btn text-sm" href={src} target="_blank" rel="noreferrer">
@@ -750,19 +785,152 @@ function PdfPanel({ runId, pdf, version }: { runId: string; pdf: NonNullable<Run
       className="p-5"
     >
       <div className="mb-3 flex flex-wrap gap-2">
-        <span className={`badge ${pages === 1 ? "badge--pass" : "badge--fail"}`}>
+        <span className={`badge ${pages >= 1 && pages <= (cv ? 2 : 1) ? "badge--pass" : "badge--fail"}`}>
           {pages} page{pages === 1 ? "" : "s"}
         </span>
         <span className={`badge ${pdf.check.placeholders.length ? "badge--fail" : "badge--pass"}`}>{pdf.check.placeholders.length} placeholders</span>
         <span className="badge badge--neutral">{pdf.check.links.length} links</span>
       </div>
-      <iframe key={src} src={src} title="Improved resume PDF" className="h-[min(78dvh,60rem)] w-full rounded-md border border-line bg-sunken" />
-      {full && <PdfFullScreen src={src} title="Improved resume" onClose={close} />}
+      <iframe key={src} src={src} title={`${title} PDF`} className="h-[min(78dvh,60rem)] w-full rounded-md border border-line bg-sunken" />
+      {full && <PdfFullScreen src={src} title={title} onClose={close} />}
       <p className="mono mt-3 truncate text-xs text-muted" title={`improved resume/${pdf.folder}/`}>
         improved resume/{pdf.folder}/
       </p>
     </Card>
   );
+}
+
+const RELEVANCE_BADGE: Record<CvOption["relevance"], string> = { high: "badge--pass", medium: "badge--warn", low: "badge--neutral" };
+
+// Before a CV is written, the knowledge base ranked against the posting: the
+// candidate ticks what goes in. Strong matches start ticked.
+function CvBuilder({
+  run,
+  busy,
+  version,
+  onBuild,
+  onClose,
+}: {
+  run: Run;
+  busy: boolean;
+  version: number;
+  onBuild: (picks: string[]) => void;
+  onClose: () => void;
+}) {
+  const [options, setOptions] = useState<CvOption[] | null>(run.cvOptions ?? null);
+  const [picked, setPicked] = useState<Set<string>>(() => defaultPicks(run, run.cvOptions));
+  const [loading, setLoading] = useState(!run.cvOptions);
+  const [error, setError] = useState("");
+
+  const fetchOptions = useCallback(
+    (refresh: boolean) => {
+      post(`/api/runs/${run.id}/cv/options`, { refresh })
+        .then(async (res) => {
+          const body = (await res.json()) as { options?: CvOption[]; error?: string };
+          if (!res.ok || !body.options) throw new Error(body.error ?? "Could not rank the knowledge base.");
+          setOptions(body.options);
+          setPicked(defaultPicks(run, body.options));
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+        .finally(() => setLoading(false));
+    },
+    [run],
+  );
+  function rankAgain() {
+    setLoading(true);
+    setError("");
+    fetchOptions(true);
+  }
+  // Ranks once when the builder opens; "Rank again" asks for a fresh list.
+  useEffect(() => {
+    if (!run.cvOptions) fetchOptions(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const toggle = (id: string, on: boolean) =>
+    setPicked((p) => {
+      const next = new Set(p);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+
+  return (
+    <>
+      <Card
+        title="Create a CV"
+        action={
+          <span className="flex items-center gap-3">
+            <button type="button" className="link-btn text-sm" disabled={loading || busy} onClick={rankAgain}>
+              Rank again
+            </button>
+            <button type="button" className="btn btn--ghost" onClick={onClose}>
+              Close
+            </button>
+          </span>
+        }
+        className="p-5"
+      >
+        <p className="text-sm text-muted">
+          A CV of up to two pages, built from this resume plus what you tick below. Items are ranked against the posting; strong matches start ticked.
+        </p>
+        {error && (
+          <div className="mt-4">
+            <Notice tone="fail">{error}</Notice>
+          </div>
+        )}
+        {loading && <p className="eyebrow streaming mt-4">Ranking your knowledge base against the posting</p>}
+        {!loading && options?.length === 0 && (
+          <p className="mt-4 text-sm text-muted">Nothing in the knowledge base fits this posting. The CV will expand on the resume alone.</p>
+        )}
+        {!loading && options && options.length > 0 && (
+          <ul className="mt-4 space-y-1">
+            {options.map((o) => (
+              <li key={o.id}>
+                <label className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-surface-hover">
+                  <input type="checkbox" className="mt-1" checked={picked.has(o.id)} onChange={(e) => toggle(o.id, e.target.checked)} />
+                  <span className="min-w-0 text-sm">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <a href={o.url} target="_blank" rel="noreferrer" className="truncate font-semibold">
+                        {o.title}
+                      </a>
+                      <span className={`badge ${RELEVANCE_BADGE[o.relevance]}`}>{o.relevance}</span>
+                      <span className="badge badge--neutral">{o.type === "repo" ? "repo" : "portfolio"}</span>
+                    </span>
+                    <span className="mt-0.5 block">{o.reason}</span>
+                    <span className="mt-0.5 block text-xs text-muted">{o.summary}</span>
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button className="btn btn--primary" disabled={busy || loading || !options} onClick={() => onBuild([...picked])}>
+            {busy ? "Writing the CV…" : `Build CV with ${picked.size} item${picked.size === 1 ? "" : "s"}`}
+          </button>
+          {options && options.length > 0 && (
+            <>
+              <button type="button" className="link-btn text-sm" disabled={busy} onClick={() => setPicked(new Set(options.map((o) => o.id)))}>
+                Tick all
+              </button>
+              <button type="button" className="link-btn text-sm" disabled={busy} onClick={() => setPicked(new Set())}>
+                Clear
+              </button>
+            </>
+          )}
+        </div>
+      </Card>
+      {run.cv && <PdfPanel runId={run.id} pdf={run.cv} version={version} cv />}
+    </>
+  );
+}
+
+// The last CV's picks when there is one, otherwise every strong match.
+function defaultPicks(run: Run, options?: CvOption[] | null): Set<string> {
+  const ids = new Set((options ?? []).map((o) => o.id));
+  if (run.cv) return new Set(run.cv.picks.filter((id) => ids.has(id)));
+  return new Set((options ?? []).filter((o) => o.relevance === "high").map((o) => o.id));
 }
 
 function DetailsCard({ details: d }: { details: JobDetails }) {
