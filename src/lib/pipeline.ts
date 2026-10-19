@@ -7,7 +7,7 @@ import { knowledgeDigest, loadKnowledge, shortlistRepos } from "./knowledge/card
 import { renderLatex, renderText } from "./latex";
 import { IMPROVED_DIR, PANEL_DIR, safeSegment } from "./paths";
 import { REVIEWERS, REVIEWER_SYSTEM, SCREEN_BRIEF, reviewerPrompt, verdictOf, type ReviewerId } from "./reviewers";
-import { Email, Findings, Ideas, JobDetails, LIMITS, Rebuild, ResumeDoc, Sequence, STAGES, type Board, type ProjectIdea, type Stage, type Synthesis, type Writeup } from "./schemas";
+import { Email, Findings, Ideas, JobDetails, LIMITS, NEEDS, ProjectTurn, Rebuild, ResumeDoc, Sequence, STAGES, type Board, type ProjectIdea, type Stage, type Synthesis, type Writeup } from "./schemas";
 import { importJob } from "./import-job";
 
 export interface Review {
@@ -40,6 +40,21 @@ export interface AddedProject {
   details: string;
 }
 
+export interface ProjectProposal {
+  name: string;
+  stack: string;
+  url: string;
+  bullets: string[];
+  keywords: ProjectTurn["keywords"];
+}
+
+// An interview about one resume project, keyed by the project's name.
+export interface ProjectChat {
+  turns: ChatTurn[];
+  facts: string[];
+  proposal?: ProjectProposal;
+}
+
 export interface DraftedSequence extends Sequence {
   target: string;
   createdAt: string;
@@ -64,6 +79,7 @@ export interface Run {
   companyResearchedAt?: string;
   companyIdeas?: ProjectIdea[];
   chat?: ChatTurn[];
+  projectChats?: Record<string, ProjectChat>;
   emails?: DraftedEmail[];
   outreach?: DraftedSequence[];
   judge?: import("./evals").JudgeResult;
@@ -522,6 +538,77 @@ export async function* chat(id: string, message: string): AsyncGenerator<{ type:
   } catch (err) {
     yield { type: "error", message: errorMessage(err) };
   }
+}
+
+// ---------- project interview ----------
+
+const PROJECT_CHAT_SYSTEM = `You refine one project on a candidate's resume for one job posting by interviewing the candidate. Compare the project with the posting, the panel's mistakes and the knowledge base (the project's repo card, if it has one).
+
+Ask one short, specific question per turn: the one whose answer would most improve this project's fit. Ask about what the candidate personally built, scale or measured results, or whether they used a skill or tool the posting names. Ask at most four questions in all; propose sooner if you have enough or the candidate asks. If the candidate gives an instruction instead of an answer, follow it.
+
+Wording: rephrase facts the project, the resume, the profile or the knowledge base already show into the posting's vocabulary without asking (say "REST API" when the repo shows a REST API). A skill, tool, number or result none of those show goes in only if the candidate confirmed it in this conversation; otherwise ask. Never invent numbers or results. A profile answer of "none" means the candidate lacks that skill.
+
+When ready, set ready to true and fill name, stack and url (keep the existing ones unless the candidate corrected them), 2-3 one-line bullets, strongest first, in the posting's vocabulary, and keywords: each posting keyword you added or brought forward, with basis "reworded" (from facts already shown) or "confirmed" (the candidate said so here). Use message to say in one or two sentences what changed. When not ready, leave name, stack, url, bullets and keywords empty and put the question in message.
+
+keywords: only distinct terms the posting itself uses (tools, practices, domains), at most six; not generic words like "data" or "testing".
+
+facts: only new facts about the candidate's work that they stated in their latest message (what they built, their role, scale, results, tools they used), as short standalone sentences that name the project. Never record remarks about the conversation, such as declining to answer or asking for a rewrite. Plain technical language; no filler or flattery.`;
+
+const projectOf = (run: Run, name: string) => run.synthesis?.resume.projects.find((p) => p.name === name);
+
+// One interview turn. With no message, the agent opens with its first question.
+export async function projectChatTurn(id: string, project: string, message?: string): Promise<ProjectChat> {
+  const run = await loadRun(id);
+  const s = run.synthesis;
+  const current = s && projectOf(run, project);
+  if (!s || !current) throw new Error("That project is not on this run's resume.");
+  const ctx = await candidateContext(run);
+  const chat: ProjectChat = run.projectChats?.[project] ?? { turns: [], facts: [] };
+  const turns = message ? [...chat.turns, { role: "user" as const, text: message }] : chat.turns;
+  const transcript = turns.map((t) => `<${t.role}>\n${t.text}\n</${t.role}>`).join("\n");
+  const entry = { ...current, bullets: current.bullets.map((b) => b.replace(NEEDS, "").trim()) };
+  const turn = await askStructured({
+    tier: "writer",
+    system: PROJECT_CHAT_SYSTEM,
+    // The run's material is the cached prefix, so each turn re-reads it at a tenth of the price.
+    context: `${contextBlock(run, ctx, improvedText(run, ctx))}\n\n${mistakesBlock(s)}`,
+    prompt: `<project>\n${JSON.stringify(entry)}\n</project>\n\n<conversation>\n${transcript || "(not started: open with your first question)"}\n</conversation>`,
+    schema: ProjectTurn,
+    effort: "medium",
+    tag: { runId: run.id, action: "project-chat" },
+  });
+  const next: ProjectChat = {
+    turns: [...turns, { role: "assistant", text: turn.message }],
+    facts: [...chat.facts, ...turn.facts.map((f) => f.trim()).filter(Boolean)],
+    proposal: turn.ready && turn.bullets.length ? { name: turn.name || current.name, stack: turn.stack || current.stack, url: turn.url || current.url, bullets: turn.bullets, keywords: turn.keywords } : undefined,
+  };
+  run.projectChats = { ...run.projectChats, [project]: next };
+  await saveRun(run);
+  return next;
+}
+
+export async function discardProjectChat(id: string, project: string): Promise<void> {
+  const run = await loadRun(id);
+  if (run.projectChats) delete run.projectChats[project];
+  await saveRun(run);
+}
+
+// Accepts the proposal: the project is replaced, the facts go to the profile,
+// and the PDF is recompiled and re-screened.
+export async function applyProjectChat(id: string, project: string): Promise<AsyncGenerator<RunEvent>> {
+  const run = await loadRun(id);
+  return guarded(run, async function* () {
+    const s = run.synthesis;
+    const chat = run.projectChats?.[project];
+    const index = s?.resume.projects.findIndex((p) => p.name === project) ?? -1;
+    if (!s || index < 0 || !chat?.proposal) throw new Error("There is no proposal for that project to apply.");
+    const { name, stack, url, bullets } = chat.proposal;
+    s.resume.projects[index] = { name, stack, url, bullets };
+    await appendProfileSection("Project details given in the panel app", chat.facts);
+    delete run.projectChats![project];
+    yield { type: "synthesis", synthesis: s };
+    yield* finish(run);
+  });
 }
 
 export async function clearChat(id: string): Promise<void> {
