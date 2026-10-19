@@ -7,6 +7,7 @@ import type { JobDetails, ProjectIdea, Synthesis } from "@/lib/schemas";
 import type { ResumeOption } from "@/lib/files";
 import { readNdjson } from "@/lib/read-ndjson";
 import { KnowledgePanel } from "@/app/knowledge-panel";
+import { PdfFullScreen } from "./pdf-full-screen";
 import { ProjectInterviewTab } from "./project-interview";
 import { RUNS_CHANGED } from "@/app/nav";
 import { CountUp } from "@/components/motion";
@@ -731,8 +732,23 @@ function Questions({ synthesis, busy, onSubmit }: { synthesis: Synthesis; busy: 
 function PdfPanel({ runId, pdf, version }: { runId: string; pdf: NonNullable<Run["pdf"]>; version: number }) {
   const src = `/api/runs/${runId}/pdf?v=${version}`;
   const pages = pdf.check.pages;
+  const [full, setFull] = useState(false);
+  const close = useCallback(() => setFull(false), []);
   return (
-    <Card title="Improved resume" action={<a className="link-btn text-sm" href={src} target="_blank" rel="noreferrer">Open</a>} className="p-5">
+    <Card
+      title="Improved resume"
+      action={
+        <span className="flex items-center gap-3">
+          <a className="link-btn text-sm" href={src} target="_blank" rel="noreferrer">
+            Open
+          </a>
+          <button type="button" className="btn" onClick={() => setFull(true)}>
+            Full screen
+          </button>
+        </span>
+      }
+      className="p-5"
+    >
       <div className="mb-3 flex flex-wrap gap-2">
         <span className={`badge ${pages === 1 ? "badge--pass" : "badge--fail"}`}>
           {pages} page{pages === 1 ? "" : "s"}
@@ -741,6 +757,7 @@ function PdfPanel({ runId, pdf, version }: { runId: string; pdf: NonNullable<Run
         <span className="badge badge--neutral">{pdf.check.links.length} links</span>
       </div>
       <iframe key={src} src={src} title="Improved resume PDF" className="h-[min(78dvh,60rem)] w-full rounded-md border border-line bg-sunken" />
+      {full && <PdfFullScreen src={src} title="Improved resume" onClose={close} />}
       <p className="mono mt-3 truncate text-xs text-muted" title={`improved resume/${pdf.folder}/`}>
         improved resume/{pdf.folder}/
       </p>
