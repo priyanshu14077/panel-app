@@ -20,6 +20,14 @@ export function displayUrl(url: string): string {
   return url.replace(/^mailto:/, "").replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "");
 }
 
+const SITES: Record<string, string> = { "github.com": "GitHub", "gitlab.com": "GitLab", "huggingface.co": "Hugging Face", "kaggle.com": "Kaggle" };
+
+// "https://github.com/me/repo" -> "GitHub"; other hosts keep their domain.
+function siteName(url: string): string {
+  const host = displayUrl(url).split("/")[0];
+  return SITES[host] ?? host;
+}
+
 const href = (url: string, text: string, underline = true) =>
   `\\href{${url.replace(/([%#])/g, "\\$1")}}{${underline ? `\\underline{${escapeTex(text)}}` : escapeTex(text)}}`;
 
@@ -66,12 +74,16 @@ function section(doc: ResumeDoc, name: ResumeDoc["order"][number]): string {
       if (!doc.projects.length) return "";
       return `\\section{Projects}\n    \\resumeSubHeadingListStart\n${doc.projects
         .map((p) => {
+          // A bold name is about 1.2 characters wide per character of italic.
+          const nameWidth = Math.ceil(p.name.length * 1.2);
+          // A link that would run off the page shows its site name instead,
+          // so a parser never reads a cut-off URL.
+          const shown = p.url && nameWidth + displayUrl(p.url).length > 84 ? siteName(p.url) : p.url ? displayUrl(p.url) : "";
           // No underline here: it collides with the first bullet below.
-          const link = p.url ? href(p.url, displayUrl(p.url), false) : "";
+          const link = p.url ? href(p.url, shown, false) : "";
           // A long stack runs into the right-aligned link, so it gets what is
           // left of the line after the name and the link.
-          // A bold name is about 1.2 characters wide per character of italic.
-          const room = 84 - Math.ceil(p.name.length * 1.2) - (p.url ? displayUrl(p.url).length : 0);
+          const room = 84 - nameWidth - shown.length;
           const stack = p.stack
             .split(",")
             .map((s) => s.trim())
