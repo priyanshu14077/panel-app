@@ -103,7 +103,10 @@ One job, from posting to tracked application, in the app's dark Ember theme. Scr
 - **Job details** extracted at a glance: location, salary, experience, must-haves, stack, how to apply, any email or form questions the posting asks for, and fit risks for where you live.
 - **The panel**: seven reviewers run in parallel and stream in as each finishes. None sees another's notes.
 - **Rebuilt resume**: mistakes listed worst first, the resume rewritten in the posting's vocabulary, the 2-4 best-fitting projects picked from your GitHub, then compiled to an ATS-parsable one-page PDF with [Jake's Resume](https://github.com/jakegut/resume). The automated screen re-runs on the new version so you see before and after.
-- **Project interview** (its own tab on every run, linked from the Panel tab): pick a project on the rebuilt resume and the agent interviews you about it in a chat, one question at a time (your role, scale, results, whether you used the tools the posting names). It proposes new bullets in the posting's words, with each added keyword marked as reworded or confirmed by you. Apply updates the resume, saves the facts you stated to your profile, recompiles the PDF and re-runs the screen.
+- **Resume checks**: after every rebuild, answer, added project or CV, the resume goes through guardrails before it is compiled. Deterministic fixes come first: past tense for dates already behind us ("Graduated Jun 2026", never "Graduating"), links not found in your profile or repos dropped, repeated lines removed, and caps on bullets, projects, stack and skills. Then one Haiku call rewrites only the lines still breaking a rule (over 150 characters, a bracketed tool list, filler words), keeping every fact and number. The Resume tab lists what changed and anything left to look at.
+- **ATS match**: the posting's terms are extracted once per run (exact spelling, the aliases a tracker treats as the same, required or nice to have). Each one the resume lacks is checked against your profile, original resume and knowledge base; a term your material shows in other words counts only with a quote that is really there. The writer is told which terms it may work in and which it must not claim (those become questions), supported tools it still leaves out go into Skills, and the compiled PDF is parsed back to text and scored: required terms weigh three times, and a term gets full credit only inside a bullet that shows it in use. The Resume tab shows the score before and after, every term by where it stands, and format checks (standard headings, contact details in the text, the posting's title, one date format, no keyword stuffing).
+- **Project interview** (its own tab on every run, linked from the Resume tab): pick a project on the rebuilt resume and the agent interviews you about it in a chat, one question at a time (your role, scale, results, whether you used the tools the posting names). It proposes new bullets in the posting's words, with each added keyword marked as reworded or confirmed by you. Apply updates the resume, saves the facts you stated to your profile, recompiles the PDF and re-runs the screen.
+- **History**: every Q&A answer, project-interview turn, email and outreach message from every run, in one SQLite file. Full-text search, filtered by kind, company, board stage, who wrote it and date, with a link back to the run.
 - **Full-screen resume**: open the rebuilt PDF over the whole window, fitted to the page or to the width, with Download and Close; Escape exits.
 - **Open questions**: facts the rebuild needs from you. Answers are saved to your profile and reused on every later run.
 - **Review an improved PDF**: the resume picker lists your own PDFs and every PDF the pipeline compiled (newest first, labelled with the job), with a Preview link. Run the panel on an improved version to check the rebuild holds up. For the same posting, the next rebuild goes back into that PDF's folder and the previous version moves to `archive/`, so nothing is overwritten. Grounding evals always check against the original resume the chain started from.
@@ -348,7 +351,8 @@ job-hunt/
 │   ├── profile.md              your facts, links and answers (see below)
 │   └── knowledge/              built by the app: knowledge.json, knowledge.md
 ├── job descriptions/<job>/     job_description.md (imported links are saved here)
-├── .hiring-panel/<run>/        run.json, PANEL.md, RESUME-IMPROVED.md; usage.jsonl
+├── .hiring-panel/panel.db      SQLite: runs, every chat and draft (full-text searchable), the cost ledger
+├── .hiring-panel/<run>/        PANEL.md, RESUME-IMPROVED.md (run.json and usage.jsonl from before the database are kept as a backup)
 └── improved resume/<job-id>/   resume.tex and the PDF
 ```
 
@@ -399,6 +403,7 @@ The same folder layout is used by the `/hiring-panel` Claude Code skill, so runs
 | `JOB_HUNT_ROOT` | the folder above the app | where your data folder lives |
 | `RESUME_TEMPLATE` | `templates/jake-resume.tex` | a different LaTeX template with the same commands |
 | `CHROME_PATH` | macOS Chrome path | Chrome binary for rendering pages |
+| `RUN_BUDGET_USD` | `1` | the most one run may spend; further calls on that run stop with a message |
 
 `MODEL_PROFILE` is read when the server starts. Restart `npm run dev` after changing it.
 
@@ -411,7 +416,7 @@ Each call names what it needs, and the profile picks the model:
 | Profile | Reading and grading (reviewers, re-screen, findings, details, shortlist, repo cards) | Writing (rebuild, ideas, chat, email, outreach, judge) | Web research | Full run, measured |
 |---|---|---|---|---|
 | `economy` | Claude Haiku 5.5 | Claude Haiku 5.5 | Claude Sonnet 5.5 | not measured (roughly $0.02) |
-| `balanced` | Claude Haiku 5.5 | Claude Sonnet 5.5 | Claude Sonnet 5.5 | **about $0.20** |
+| `balanced` | Claude Haiku 5.5 | Claude Sonnet 5.5 | Claude Sonnet 5.5 | **about $0.08** |
 | `quality` | Claude Opus 5.5 | Claude Opus 5.5 | Claude Opus 5.5 | about $1.00 |
 
 Ways it keeps cost down:
@@ -420,9 +425,12 @@ Ways it keeps cost down:
 - **Prompt caching**: chat turns, outreach sequences and emails send the run's material (posting, resume, profile, knowledge base) as a cached block ahead of the task. The cache key also covers the system prompt and output schema, so it pays off when the same action repeats within 5 minutes: a second and third outreach target re-read about 21k tokens at a tenth of the price. One-off calls (rebuild, ideas) skip it rather than pay the 1.25x cache write.
 - **Research reuse**: a company brief from any run for the same company in the last 30 days is reused instead of searching the web again.
 - **Medium effort for writing**: rebuild, company ideas and add-project run at medium effort; high mostly bought extra thinking tokens.
+- **Ideas on request**: project ideas are written when you press Suggest projects in Project studio, not on every run.
+- **Fewer searches**: company research makes at most 5 web searches.
+- **A per-run budget**: every call checks what its run has already spent and stops at `RUN_BUDGET_USD`, so retries, rebuilds and long chats can't run away.
 - **Refusal handling**: Sonnet and Opus retry a safety refusal server-side on Anthropic's recommended model. Haiku has no server-side fallback, so its refusals are retried once on Sonnet.
 
-Rough add-on costs on `balanced`: company research about $0.20 (free when a recent brief is reused), company ideas about $0.07, an outreach sequence about $0.07 for the first target and $0.02 for each further one drafted within 5 minutes, the grounding judge about $0.05. The **Usage & cost** page shows real numbers from `.hiring-panel/usage.jsonl`.
+Rough add-on costs on `balanced`: company research about $0.20 (free when a recent brief is reused), company ideas about $0.07, an outreach sequence about $0.07 for the first target and $0.02 for each further one drafted within 5 minutes, the grounding judge about $0.05. The **Usage & cost** page shows real numbers from the database.
 
 ---
 
@@ -492,7 +500,7 @@ Structured-output schemas compile into a grammar on Anthropic's side, and a larg
 | Command | Calls Claude | What it does |
 |---|---|---|
 | `npx tsx scripts/render-fixture.mts` | no | renders a fixture resume through LaTeX and the PDF checks |
-| `npx tsx scripts/refit-run.mts ../.hiring-panel/<run>/run.json` | no | recompiles a saved run's PDF with the current renderer |
+| `npx tsx scripts/refit-run.mts <run-id>… \| --all` | no | applies the deterministic resume checks and recompiles saved runs' PDFs |
 | `npx tsx scripts/collect-check.mts [portfolio-url]` | no | exercises the GitHub and portfolio collectors |
 | `JOB_HUNT_ROOT=<scratch> npx tsx scripts/archive-check.mts <run.json>` | no | compiles a run's resume twice into one folder and shows the archived copy |
 | `npx tsx scripts/schema-check.mts` | yes (export the key first) | confirms every schema compiles on the tier it runs on |
