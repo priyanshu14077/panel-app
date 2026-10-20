@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { jobFacets, type JobFacets } from "./jobs";
 import { PANEL_DIR } from "./paths";
 import type { Run } from "./pipeline";
 import type { UsageRecord } from "./usage";
@@ -64,7 +65,9 @@ export function getDb(): DatabaseSync {
   // reads continue while a run saves.
   db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
   db.exec(SCHEMA);
+  addFacetColumns(db);
   importLegacy(db);
+  refreshFacets(db);
   return db;
 }
 
@@ -114,6 +117,7 @@ function writeRun(d: DatabaseSync, run: Run): void {
     `INSERT INTO runs (id, created_at, company, role, stage, data) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET company = excluded.company, role = excluded.role, stage = excluded.stage, data = excluded.data`,
   ).run(run.id, run.createdAt, run.synthesis?.job.company ?? "", run.synthesis?.job.role ?? "", run.board?.stage ?? "", JSON.stringify(run));
+  writeFacets(d, run.id, jobFacets(run));
   d.prepare("DELETE FROM messages WHERE run_id = ?").run(run.id);
   const insert = d.prepare("INSERT INTO messages (run_id, kind, thread, seq, role, text, at) VALUES (?, ?, ?, ?, ?, ?, ?)");
   for (const m of messagesOf(run)) insert.run(run.id, m.kind, m.thread, m.seq, m.role, m.text, m.at);
@@ -131,6 +135,122 @@ export function getRun(id: string): Run | null {
 
 export function allRuns(): Run[] {
   return (getDb().prepare("SELECT data FROM runs ORDER BY created_at DESC").all() as { data: string }[]).map((r) => JSON.parse(r.data));
+}
+
+// ---------- job filters ----------
+
+// The board's filters are columns on runs, written with every save. Bump the
+// version when the rules in jobs.ts change, and every run is re-read once.
+const FACETS_VERSION = "1";
+const FACET_COLUMNS: [string, string][] = [
+  ["families", "TEXT NOT NULL DEFAULT ''"], // ",Backend,AI / ML," so one LIKE matches a family
+  ["level", "TEXT NOT NULL DEFAULT ''"],
+  ["mode", "TEXT NOT NULL DEFAULT ''"],
+  ["region", "TEXT NOT NULL DEFAULT ''"],
+  ["verdict", "TEXT NOT NULL DEFAULT ''"],
+  ["ats", "INTEGER"],
+  ["fit_risk", "INTEGER NOT NULL DEFAULT 0"],
+  ["group_key", "TEXT NOT NULL DEFAULT ''"],
+];
+
+function addFacetColumns(d: DatabaseSync): void {
+  const have = new Set((d.prepare("PRAGMA table_info(runs)").all() as { name: string }[]).map((c) => c.name));
+  for (const [name, type] of FACET_COLUMNS) if (!have.has(name)) d.exec(`ALTER TABLE runs ADD COLUMN ${name} ${type}`);
+  d.exec("CREATE INDEX IF NOT EXISTS runs_group ON runs(group_key, created_at)");
+}
+
+function writeFacets(d: DatabaseSync, id: string, f: JobFacets): void {
+  d.prepare("UPDATE runs SET families = ?, level = ?, mode = ?, region = ?, verdict = ?, ats = ?, fit_risk = ?, group_key = ? WHERE id = ?").run(
+    `,${f.families.join(",")},`,
+    f.level,
+    f.mode,
+    f.region,
+    f.verdict,
+    f.ats,
+    f.fitRisk ? 1 : 0,
+    f.groupKey,
+    id,
+  );
+}
+
+function refreshFacets(d: DatabaseSync): void {
+  const row = d.prepare("SELECT value FROM meta WHERE key = 'job-facets'").get() as { value: string } | undefined;
+  if (row?.value === FACETS_VERSION) return;
+  transaction(d, () => {
+    for (const r of d.prepare("SELECT id, data FROM runs").all() as { id: string; data: string }[]) writeFacets(d, r.id, jobFacets(JSON.parse(r.data)));
+    d.prepare("INSERT INTO meta (key, value) VALUES ('job-facets', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(FACETS_VERSION);
+  });
+}
+
+export interface JobFilter {
+  q?: string; // company or role
+  family?: string;
+  level?: string;
+  mode?: string;
+  region?: string;
+  verdict?: string;
+  stage?: string;
+  fit?: boolean; // only jobs with no fit risk
+  minAts?: number;
+  repeats?: boolean; // keep every run of a posting, not just the latest
+}
+
+export interface JobRow {
+  id: string;
+  groupKey: string;
+  repeats: number; // other runs of the same posting
+}
+
+// Runs with a panel result that match every filter, newest first. Repeats of
+// one posting collapse to the latest run unless asked for.
+export function filterJobs(f: JobFilter): JobRow[] {
+  const where = ["json_extract(data, '$.synthesis') IS NOT NULL"];
+  const args: (string | number)[] = [];
+  const add = (sql: string, ...values: (string | number)[]) => {
+    where.push(sql);
+    args.push(...values);
+  };
+  if (f.q?.trim()) add("(company LIKE ? OR role LIKE ?)", `%${f.q.trim()}%`, `%${f.q.trim()}%`);
+  if (f.family) add("families LIKE ?", `%,${f.family},%`);
+  if (f.level) add("level = ?", f.level);
+  if (f.mode) add("mode = ?", f.mode);
+  if (f.region) add("region = ?", f.region);
+  if (f.verdict) add("verdict = ?", f.verdict);
+  if (f.stage) add("stage = ?", f.stage);
+  if (f.fit) where.push("fit_risk = 0");
+  if (f.minAts) add("ats >= ?", f.minAts);
+  const rows = getDb()
+    .prepare(
+      `SELECT id, group_key,
+         COUNT(*) OVER (PARTITION BY group_key) - 1 AS repeats,
+         ROW_NUMBER() OVER (PARTITION BY group_key ORDER BY created_at DESC) AS nth
+       FROM runs WHERE ${where.join(" AND ")} ORDER BY created_at DESC`,
+    )
+    .all(...args) as { id: string; group_key: string; repeats: number; nth: number }[];
+  return rows.filter((r) => f.repeats || r.nth === 1).map((r) => ({ id: r.id, groupKey: r.group_key, repeats: r.repeats }));
+}
+
+// How many postings (not runs) carry each value, for the filter labels.
+export function jobFacetCounts(): Record<"family" | "level" | "mode" | "region" | "verdict", Record<string, number>> {
+  const rows = getDb()
+    .prepare(
+      `SELECT families, level, mode, region, verdict FROM runs
+       WHERE json_extract(data, '$.synthesis') IS NOT NULL
+       GROUP BY group_key HAVING created_at = MAX(created_at)`,
+    )
+    .all() as Record<string, string>[];
+  const out = { family: {}, level: {}, mode: {}, region: {}, verdict: {} } as Record<"family" | "level" | "mode" | "region" | "verdict", Record<string, number>>;
+  const bump = (k: keyof typeof out, v: string) => {
+    if (v) out[k][v] = (out[k][v] ?? 0) + 1;
+  };
+  for (const r of rows) {
+    for (const fam of r.families.split(",").filter(Boolean)) bump("family", fam);
+    bump("level", r.level);
+    bump("mode", r.mode);
+    bump("region", r.region);
+    bump("verdict", r.verdict);
+  }
+  return out;
 }
 
 // ---------- usage ----------
