@@ -414,14 +414,12 @@ export function runPanel(input: { jobText: string; resumeFile: string }): AsyncG
       tier: "fast", tag: { runId: run.id, action: "findings" },
     });
 
-    yield { type: "stage", stage: "Rebuilding the resume and choosing projects to suggest" };
+    yield { type: "stage", stage: "Rebuilding the resume" };
     run.shortlist = await shortlist;
     const ctx = await candidateContext(run);
     const context = contextBlock(run, ctx, resume);
-    const [rebuild, ideas] = await Promise.all([
-      askStructured({ system: rebuildSystem(), prompt: `${context}\n\n${mistakesBlock(findings)}`, schema: Rebuild, effort: "medium", tier: "writer", tag: { runId: run.id, action: "rebuild" } }),
-      askStructured({ system: IDEAS_SYSTEM, prompt: `${context}\n\n${mistakesBlock(findings)}`, schema: Ideas, effort: "medium", tier: "writer", tag: { runId: run.id, action: "ideas" } }),
-    ]);
+    // Project ideas are written on request (Project studio), not on every run.
+    const rebuild = await askStructured({ system: rebuildSystem(), prompt: `${context}\n\n${mistakesBlock(findings)}`, schema: Rebuild, effort: "medium", tier: "writer", tag: { runId: run.id, action: "rebuild" } });
     run.details = (await details) ?? undefined;
     if (run.details) yield { type: "details", details: run.details };
     run.board = { stage: "To apply", movedAt: new Date().toISOString(), notes: "", sent: {} };
@@ -430,7 +428,7 @@ export function runPanel(input: { jobText: string; resumeFile: string }): AsyncG
       mistakes: findings.mistakes,
       resume: rebuild.resume,
       questions: rebuild.questions,
-      projects: ideas.ideas,
+      projects: [],
     };
     yield { type: "synthesis", synthesis: run.synthesis };
     await saveRun(run);
@@ -510,6 +508,29 @@ export async function researchCompany(id: string): Promise<AsyncGenerator<RunEve
     run.companyIdeas = ideas;
     await saveRun(run);
     yield { type: "company", brief: run.companyBrief, ideas };
+    yield { type: "done", run };
+  });
+}
+
+// Projects that close the panel's gaps, written when asked for.
+export async function suggestProjects(id: string): Promise<AsyncGenerator<RunEvent>> {
+  const run = await loadRun(id);
+  return guarded(run, async function* () {
+    const s = run.synthesis;
+    if (!s) throw new Error("Run the panel first.");
+    const ctx = await candidateContext(run);
+    yield { type: "stage", stage: "Choosing projects that close the panel's gaps" };
+    const { ideas } = await askStructured({
+      system: IDEAS_SYSTEM,
+      prompt: `${contextBlock(run, ctx, improvedText(run, ctx))}\n\n${mistakesBlock(s)}`,
+      schema: Ideas,
+      effort: "medium",
+      tier: "writer",
+      tag: { runId: run.id, action: "ideas" },
+    });
+    s.projects = ideas;
+    await saveRun(run);
+    yield { type: "synthesis", synthesis: s };
     yield { type: "done", run };
   });
 }
