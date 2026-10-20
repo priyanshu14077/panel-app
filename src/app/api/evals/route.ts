@@ -1,7 +1,9 @@
+import { connection } from "next/server";
 import { evaluateRun } from "@/lib/evals";
 import { listRuns, loadRun } from "@/lib/pipeline";
 
 export async function GET() {
+  await connection(); // the database is read synchronously; never prerender it
   const runs = await listRuns();
   const rows = [];
   for (const r of runs) {

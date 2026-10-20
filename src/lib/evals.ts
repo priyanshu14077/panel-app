@@ -4,8 +4,8 @@ import { z } from "zod";
 import { askStructured } from "./claude";
 import { knowledgeDigest, loadKnowledge } from "./knowledge/cards";
 import { readProfile, resumeText } from "./files";
-import { KNOWLEDGE_DIR, PANEL_DIR, safeSegment } from "./paths";
-import type { Run } from "./pipeline";
+import { KNOWLEDGE_DIR } from "./paths";
+import { loadRun, saveRun, type Run } from "./pipeline";
 import { LIMITS, NEEDS, type ResumeDoc } from "./schemas";
 
 export type Status = "pass" | "warn" | "fail" | "skip";
@@ -225,9 +225,8 @@ export async function runJudge(run: Run): Promise<JudgeResult> {
     tier: "writer", tag: { runId: run.id, action: "eval:judge" },
   });
   const judge: JudgeResult = { at: new Date().toISOString(), claims };
-  const file = path.join(PANEL_DIR, safeSegment(run.id), "run.json");
-  const saved = JSON.parse(await fs.readFile(file, "utf8")) as Run;
+  const saved = await loadRun(run.id);
   saved.judge = judge;
-  await fs.writeFile(file, JSON.stringify(saved, null, 2));
+  await saveRun(saved);
   return judge;
 }

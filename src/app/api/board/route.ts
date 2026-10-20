@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { evaluateRun } from "@/lib/evals";
 import { loadAllRuns, type Run } from "@/lib/pipeline";
 import type { Board } from "@/lib/schemas";
@@ -32,6 +33,7 @@ function dueFor(run: Run, board: Board): string[] {
 }
 
 export async function GET() {
+  await connection(); // the database is read synchronously; never prerender it
   const [runs, usage] = await Promise.all([loadAllRuns(), readUsage()]);
   const cost = new Map<string, number>();
   for (const u of usage) if (u.runId) cost.set(u.runId, (cost.get(u.runId) ?? 0) + u.cost);

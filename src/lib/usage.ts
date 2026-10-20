@@ -1,6 +1,4 @@
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import { PANEL_DIR } from "./paths";
+import { allUsage, putUsage } from "./db";
 
 // List prices in dollars per million tokens. Cache writes (5-minute TTL) cost
 // 1.25x input. A fallback can serve a request on another model, so price by
@@ -38,8 +36,6 @@ interface ApiUsage {
   server_tool_use?: { web_search_requests?: number | null } | null;
 }
 
-const LEDGER = path.join(PANEL_DIR, "usage.jsonl");
-
 // Haiku 5.5 bills prompts over 100K tokens at 5x its short-prompt rates.
 const HAIKU_LONG = { input: 0.5, output: 2.5, cacheRead: 0.05 };
 
@@ -68,18 +64,10 @@ export async function recordUsage(tag: UsageTag | undefined, model: string, u: A
     cost: priceOf(model, u),
   };
   try {
-    await fs.mkdir(PANEL_DIR, { recursive: true });
-    await fs.appendFile(LEDGER, `${JSON.stringify(record)}\n`);
+    putUsage(record);
   } catch {} // metering must never break a run
 }
 
 export async function readUsage(): Promise<UsageRecord[]> {
-  try {
-    return (await fs.readFile(LEDGER, "utf8"))
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => JSON.parse(l));
-  } catch {
-    return [];
-  }
+  return allUsage();
 }

@@ -9,6 +9,7 @@ import { IMPROVED_DIR, PANEL_DIR, safeSegment } from "./paths";
 import { REVIEWERS, REVIEWER_SYSTEM, SCREEN_BRIEF, reviewerPrompt, verdictOf, type ReviewerId } from "./reviewers";
 import { CvPicks, Email, Findings, Ideas, JobDetails, LIMITS, NEEDS, ProjectTurn, Rebuild, ResumeDoc, Sequence, STAGES, type Board, type CvOption, type ProjectIdea, type Stage, type Synthesis, type Writeup } from "./schemas";
 import { importJob } from "./import-job";
+import { allRuns, getRun, putRun } from "./db";
 
 export interface Review {
   id: ReviewerId;
@@ -25,6 +26,7 @@ export interface Screen {
 export interface ChatTurn {
   role: "user" | "assistant";
   text: string;
+  at?: string;
 }
 
 export interface DraftedEmail extends Email {
@@ -111,12 +113,13 @@ export type RunEvent =
 const runDir = (id: string) => path.join(PANEL_DIR, safeSegment(id));
 
 export async function loadRun(id: string): Promise<Run> {
-  return JSON.parse(await fs.readFile(path.join(runDir(id), "run.json"), "utf8"));
+  const run = getRun(safeSegment(id));
+  if (!run) throw new Error(`No run ${id}`);
+  return run;
 }
 
-async function saveRun(run: Run): Promise<void> {
-  await fs.mkdir(runDir(run.id), { recursive: true });
-  await fs.writeFile(path.join(runDir(run.id), "run.json"), JSON.stringify(run, null, 2));
+export async function saveRun(run: Run): Promise<void> {
+  putRun(run);
 }
 
 export async function listRuns(): Promise<Pick<Run, "id" | "createdAt" | "synthesis" | "pdf">[]> {
@@ -124,19 +127,7 @@ export async function listRuns(): Promise<Pick<Run, "id" | "createdAt" | "synthe
 }
 
 export async function loadAllRuns(): Promise<Run[]> {
-  let names: string[] = [];
-  try {
-    names = await fs.readdir(PANEL_DIR);
-  } catch {
-    return [];
-  }
-  const runs = [];
-  for (const name of names) {
-    try {
-      runs.push(await loadRun(name));
-    } catch {} // folders written by the skill have no run.json
-  }
-  return runs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return allRuns();
 }
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -313,6 +304,7 @@ async function writeReports(run: Run, profile: string): Promise<void> {
   ].join("\n");
   const questions = s.questions.map((q, i) => `${i + 1}. **${q.question}** ${q.why}`).join("\n");
   const improved = `${renderText(s.resume, contact, true)}\n\n---\n\n### Questions to answer\n\n${questions || "None."}\n`;
+  await fs.mkdir(runDir(run.id), { recursive: true });
   await fs.writeFile(path.join(runDir(run.id), "PANEL.md"), panel);
   await fs.writeFile(path.join(runDir(run.id), "RESUME-IMPROVED.md"), improved);
 }
@@ -528,7 +520,7 @@ export async function* chat(id: string, message: string): AsyncGenerator<{ type:
   const run = await loadRun(id);
   try {
     const ctx = await candidateContext(run);
-    const history = [...(run.chat ?? []), { role: "user" as const, text: message }];
+    const history = [...(run.chat ?? []), { role: "user" as const, text: message, at: new Date().toISOString() }];
     const stream = streamChat({
       system: CHAT_SYSTEM,
       context: contextBlock(run, ctx, improvedText(run, ctx)),
@@ -544,7 +536,7 @@ export async function* chat(id: string, message: string): AsyncGenerator<{ type:
       }
       yield { type: "delta", text: next.value };
     }
-    run.chat = [...history, { role: "assistant", text: reply }];
+    run.chat = [...history, { role: "assistant", text: reply, at: new Date().toISOString() }];
     await saveRun(run);
     yield { type: "done" };
   } catch (err) {
@@ -638,7 +630,7 @@ export async function projectChatTurn(id: string, project: string, message?: str
   if (!s || !current) throw new Error("That project is not on this run's resume.");
   const ctx = await candidateContext(run);
   const chat: ProjectChat = run.projectChats?.[project] ?? { turns: [], facts: [] };
-  const turns = message ? [...chat.turns, { role: "user" as const, text: message }] : chat.turns;
+  const turns = message ? [...chat.turns, { role: "user" as const, text: message, at: new Date().toISOString() }] : chat.turns;
   const transcript = turns.map((t) => `<${t.role}>\n${t.text}\n</${t.role}>`).join("\n");
   const entry = { ...current, bullets: current.bullets.map((b) => b.replace(NEEDS, "").trim()) };
   const turn = await askStructured({
@@ -652,7 +644,7 @@ export async function projectChatTurn(id: string, project: string, message?: str
     tag: { runId: run.id, action: "project-chat" },
   });
   const next: ProjectChat = {
-    turns: [...turns, { role: "assistant", text: turn.message }],
+    turns: [...turns, { role: "assistant", text: turn.message, at: new Date().toISOString() }],
     facts: [...chat.facts, ...turn.facts.map((f) => f.trim()).filter(Boolean)],
     proposal: turn.ready && turn.bullets.length ? { name: turn.name || current.name, stack: turn.stack || current.stack, url: turn.url || current.url, bullets: turn.bullets, keywords: turn.keywords } : undefined,
   };
