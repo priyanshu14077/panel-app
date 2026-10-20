@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { askStructured } from "./claude";
-import { skillCap } from "./guardrails";
+import { isGeneric, skillCap } from "./guardrails";
 import { z } from "zod";
 import { AtsTerms, type AtsTerm, type ResumeDoc } from "./schemas";
 
@@ -11,10 +11,11 @@ const run = promisify(execFile);
 // posting's terms against it. This does the same, deterministically, so the
 // score does not drift between calls the way a model's keyword list does.
 
-const TERMS_SYSTEM = `You list the terms an applicant tracking system would match a resume against for this job posting: languages, frameworks, tools, platforms, engineering practices, domain terms, certifications, the degree, and soft skills the posting names. Spell each exactly as the posting does. Skip generic words ("software", "team", "code", "experience") and anything the posting does not say. At most 30 terms, requirements first.`;
+const TERMS_SYSTEM = `You list the terms an applicant tracking system would match a resume against for this job posting: languages, frameworks, tools, platforms, engineering practices, domain terms, certifications, the degree, and soft skills the posting names. Spell each exactly as the posting does. Skip generic words ("software", "team", "code", "experience"), category words that name no specific skill ("programming language", "frameworks", "cloud platform", "databases"), and anything the posting does not say. At most 30 terms, requirements first.`;
 
 export async function extractTerms(jobText: string, runId: string): Promise<AtsTerms> {
-  return askStructured({ tier: "fast", system: TERMS_SYSTEM, prompt: `<job_posting>\n${jobText}\n</job_posting>`, schema: AtsTerms, effort: "low", tag: { runId, action: "ats-terms" } });
+  const out = await askStructured({ tier: "fast", system: TERMS_SYSTEM, prompt: `<job_posting>\n${jobText}\n</job_posting>`, schema: AtsTerms, effort: "low", tag: { runId, action: "ats-terms" } });
+  return { ...out, terms: out.terms.filter((t) => !isGeneric(t.term)) };
 }
 
 // The plain text a parser gets out of a PDF: reading order, no layout.
@@ -181,7 +182,8 @@ export function scoreAts(text: string, ats: AtsInput, material: { text: string; 
   const terms = ats.terms;
   text = withoutUrls(text);
   const s = sectionsOf(text);
-  const results: TermResult[] = terms.terms.map((t) => {
+  // Terms saved before the generic filter existed are dropped here too.
+  const results: TermResult[] = terms.terms.filter((t) => !isGeneric(t.term)).map((t) => {
     const n = count(text, t);
     const placement: Placement = found(s.body, t)
       ? "body"

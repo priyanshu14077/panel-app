@@ -33,6 +33,11 @@ export const BANNED = [
 
 export const skillCap = (kind: DocKind) => LIMITS[kind].skillItems;
 
+// A category, not a skill: "programming language" in a Languages row reads as
+// template residue to a screener.
+const GENERIC = /^(?:(?:a|an|any|one|other|modern|relevant|popular|major|general[- ]purpose|scripting|object[- ]oriented|programming|coding|cloud|software|backend|frontend)\s+)*(?:languages?|frameworks?|librar(?:y|ies)|tools?|tooling|databases?|platforms?|technolog(?:y|ies)|software|stack|cloud)$/i;
+export const isGeneric = (term: string) => GENERIC.test(term.trim());
+
 // Words that pad a resume line without saying anything a reader can check.
 const FILLER = [...BANNED, "spearheaded", "utilized", "responsible for", "various", "cutting-edge", "seamless", "robust", "world-class", "synergies", "helped to"];
 
@@ -195,6 +200,10 @@ export function tidy(doc: ResumeDoc, kind: DocKind, opts: { today: Date; urls: S
         const k = s.trim().toLowerCase();
         if (!k || used.has(k)) return false;
         used.add(k);
+        if (isGeneric(k)) {
+          note(`Skills: dropped "${s.trim()}", a category rather than a skill`);
+          return false;
+        }
         return true;
       }),
     }))
