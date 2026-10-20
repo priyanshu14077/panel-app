@@ -157,6 +157,15 @@ const weight = (t: AtsTerm) => (t.required ? 3 : 1);
 // Soft skills are listed but not scored: a tracker can match "communication",
 // a reader cannot verify it, and padding a resume with them reads badly.
 const scored = (t: AtsTerm) => t.kind !== "soft-skill";
+
+// The best score the candidate's material allows: every term it backs shown
+// in a bullet. The gap to it is the resume's fault; the rest is fit.
+export function atsCeiling(report: AtsReport): number {
+  const weighted = report.terms.filter(scored);
+  const total = weighted.reduce((a, t) => a + weight(t), 0);
+  const best = (t: TermResult) => (t.placement === "absent" ? 0 : t.placement === "skills" ? (t.evidence ? 1 : CREDIT.skills) : 1);
+  return total ? Math.round((100 * weighted.reduce((a, t) => a + best(t) * weight(t), 0)) / total) : 0;
+}
 // Past this, a reader sees repetition; trackers that penalise stuffing do too.
 const STUFFED = 6;
 

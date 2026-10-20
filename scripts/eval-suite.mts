@@ -4,6 +4,7 @@
 //   npx tsx --env-file=.env.local scripts/eval-suite.mts --seed     freeze the cases (no Claude calls)
 //   npx tsx --env-file=.env.local scripts/eval-suite.mts            run every case (~$0.08 each)
 //   ... --only kalepa,n26 --notes "why this run" --concurrency 3
+//   ... --recheck <suite id>   re-run the code checks on a finished suite (no Claude calls)
 //
 // Cases run in a sandbox copy of resume/ (profile, PDFs, knowledge base) under
 // .hiring-panel/evals/<suite>/, so no real run, PDF or board card is touched.
@@ -53,11 +54,40 @@ if (args.includes("--seed")) {
   process.exit(0);
 }
 
+const git = (...a: string[]) => execFileSync("git", a, { encoding: "utf8" }).trim();
+
+const recheck = flag("recheck");
+if (recheck) {
+  const suite = store.db.prepare("SELECT sandbox FROM eval_suites WHERE id = ?").get(recheck) as { sandbox: string } | undefined;
+  if (!suite) throw new Error(`No suite ${recheck}`);
+  process.env.JOB_HUNT_ROOT = suite.sandbox;
+  const { getRun } = await import("../src/lib/db.ts");
+  const { parsedText, atsCeiling } = await import("../src/lib/ats.ts");
+  const { IMPROVED_DIR } = await import("../src/lib/paths.ts");
+  const { codeChecks, majority, summarize } = await import("../src/lib/eval-suite.ts");
+  const rows = store.db.prepare("SELECT case_id, run_id, result FROM eval_results WHERE suite_id = ?").all(recheck) as { case_id: string; run_id: string; result: string }[];
+  const results: CaseResult[] = [];
+  for (const row of rows) {
+    const r = JSON.parse(row.result) as CaseResult;
+    const run = getRun(row.run_id);
+    if (!r.error && run?.pdf) {
+      r.checks = codeChecks(run, await parsedText(path.join(IMPROVED_DIR, run.pdf.folder, run.pdf.file)));
+      r.ats.ceiling = run.ats?.after ? atsCeiling(run.ats.after) : null;
+      r.verdict = majority(r.votes);
+      store.putResult(recheck, row.case_id, row.run_id, r);
+    }
+    results.push(r);
+    console.log(`${r.caseId.padEnd(11)} ${(r.verdict || "ERROR").padEnd(6)} ATS ${r.ats.after ?? "-"} of ${r.ats.ceiling ?? "-"}  ${r.checks.filter((k) => !k.pass).map((k) => `${k.id} (${k.detail.slice(0, 60)})`).join("; ") || "all checks pass"}`);
+  }
+  store.finishSuite(recheck, summarize(results));
+  console.log(summarize(results));
+  process.exit(0);
+}
+
 const only = flag("only")?.split(",").filter(Boolean);
 const cases = store.cases().filter((c) => !only || only.includes(c.id));
 if (!cases.length) throw new Error("No cases. Run with --seed first.");
 
-const git = (...a: string[]) => execFileSync("git", a, { encoding: "utf8" }).trim();
 const version = `${git("rev-parse", "--short", "HEAD")}${git("status", "--porcelain", "--untracked-files=no") ? "+dirty" : ""}`;
 const suiteId = new Date().toISOString().replace(/[:.]/g, "-");
 const sandbox = path.join(REAL_ROOT, ".hiring-panel", "evals", suiteId);
@@ -67,7 +97,7 @@ cpSync(path.join(REAL_ROOT, "resume"), path.join(sandbox, "resume"), { recursive
 // Every module below reads its paths from JOB_HUNT_ROOT when first imported.
 process.env.JOB_HUNT_ROOT = sandbox;
 const { runPanel } = await import("../src/lib/pipeline.ts");
-const { parsedText } = await import("../src/lib/ats.ts");
+const { parsedText, atsCeiling } = await import("../src/lib/ats.ts");
 const { runSpend } = await import("../src/lib/db.ts");
 const { IMPROVED_DIR } = await import("../src/lib/paths.ts");
 const { codeChecks, majority, screenVotes, summarize } = await import("../src/lib/eval-suite.ts");
@@ -76,7 +106,7 @@ store.startSuite(suiteId, version, flag("notes") ?? "", sandbox);
 console.log(`Suite ${suiteId} on ${version}: ${cases.length} cases in ${sandbox}\n`);
 
 async function runCase(c: EvalCase): Promise<CaseResult> {
-  const empty = { checks: [], ats: { before: null, after: null }, votes: [], verdict: "", knockout: c.knockout, questions: 0 };
+  const empty = { checks: [], ats: { before: null, after: null, ceiling: null }, votes: [], verdict: "", knockout: c.knockout, questions: 0 };
   let runId = "";
   try {
     let done = null;
@@ -92,7 +122,7 @@ async function runCase(c: EvalCase): Promise<CaseResult> {
       caseId: c.id,
       runId,
       checks: codeChecks(done, parsed),
-      ats: { before: done.ats?.before?.score ?? null, after: done.ats?.after?.score ?? null },
+      ats: { before: done.ats?.before?.score ?? null, after: done.ats?.after?.score ?? null, ceiling: done.ats?.after ? atsCeiling(done.ats.after) : null },
       votes,
       verdict: majority(votes),
       knockout: c.knockout,
@@ -119,7 +149,7 @@ await Promise.all(
       console.log(
         r.error
           ? `${c.id.padEnd(11)} ERROR ${r.error}`
-          : `${c.id.padEnd(11)} ${r.verdict.padEnd(6)} votes ${r.votes.map((v) => v.verdict[0]).join("")}  ATS ${r.ats.before ?? "-"}→${r.ats.after ?? "-"}  $${r.cost.toFixed(3)}  ${fails.length ? `fails: ${fails.join(", ")}` : "all checks pass"}`,
+          : `${c.id.padEnd(11)} ${r.verdict.padEnd(6)} votes ${r.votes.map((v) => v.verdict[0]).join("")}  ATS ${r.ats.before ?? "-"}→${r.ats.after ?? "-"} of ${r.ats.ceiling ?? "-"}  $${r.cost.toFixed(3)}  ${fails.length ? `fails: ${fails.join(", ")}` : "all checks pass"}`,
       );
       // Wait out the second this run started in before the next starts.
       await new Promise((res) => setTimeout(res, 1100));
@@ -142,6 +172,7 @@ line("Screen PASS (majority of 3)", summary.pass, p?.pass);
 line("REJECT, resume's fault", summary.faultRejects, p?.faultRejects, true);
 line("REJECT, known knockout", summary.knockoutRejects, p?.knockoutRejects);
 line("Mean ATS match after", summary.meanAts, p?.meanAts);
+line("Mean gap to ATS ceiling", summary.meanGap, p?.meanGap, true);
 line("Grader errors (bad format)", summary.graderErrors, p?.graderErrors, true);
 line("Run errors", summary.errors, p?.errors, true);
 line("Cost, $", summary.cost, p?.cost, true);
