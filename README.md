@@ -504,6 +504,9 @@ Structured-output schemas compile into a grammar on Anthropic's side, and a larg
 | `npx tsx scripts/collect-check.mts [portfolio-url]` | no | exercises the GitHub and portfolio collectors |
 | `JOB_HUNT_ROOT=<scratch> npx tsx scripts/archive-check.mts <run.json>` | no | compiles a run's resume twice into one folder and shows the archived copy |
 | `npx tsx scripts/schema-check.mts` | yes (export the key first) | confirms every schema compiles on the tier it runs on |
+| `npx tsx --env-file=.env.local scripts/eval-suite.mts --seed` | no | freezes the eval cases: real postings, each restarted from its base resume |
+| `npx tsx --env-file=.env.local scripts/eval-suite.mts [--only a,b] [--notes …]` | yes, about $0.09 a case | runs every case in a sandbox under `.hiring-panel/evals/`, measures it, and compares it with the last suite on the same cases |
+| `npx tsx --env-file=.env.local scripts/eval-suite.mts --recheck <suite>` | no | re-runs the code checks on a finished suite |
 | `scripts/hero-art/render.sh` | no | renders the landing hero's particle images from `art.html` (needs Chrome) |
 | `scripts/brand/render-icons.sh` | no | renders `favicon.ico` and `apple-icon.png` from `src/app/icon.svg` (needs Chrome) |
 
