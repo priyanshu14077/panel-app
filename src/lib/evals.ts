@@ -105,6 +105,13 @@ export async function evaluateRun(run: Run): Promise<EvalResult[]> {
   } else {
     out.push(result("one-page", "PDF is one page", "resume", "fail", "no PDF"));
   }
+  const ats = run.ats?.after;
+  if (ats) {
+    const before = run.ats?.before ? `${run.ats.before.score}% → ` : "";
+    out.push(result("ats-match", "ATS keyword match is at least 75%", "resume", ats.score >= 75 ? "pass" : ats.score >= 55 ? "warn" : "fail", `${before}${ats.score}%`));
+    const failed = ats.checks.filter((c) => !c.pass);
+    out.push(result("ats-format", "ATS format checks pass", "resume", failed.length ? "fail" : "pass", failed.map((c) => `${c.name}: ${c.detail}`).join("; ") || `${ats.checks.length} checks`));
+  }
   const open = s.questions.length;
   out.push(result("open-questions", "Open questions left", "resume", open === 0 ? "pass" : "warn", `${open} unanswered; their lines are left out of the PDF`));
 

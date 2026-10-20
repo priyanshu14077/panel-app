@@ -3,12 +3,13 @@ import path from "node:path";
 import { askResearch, askStructured, askText, streamChat } from "./claude";
 import { compileResume, pdfName, type DocKind, type PdfCheck } from "./compile";
 import { guard, knownUrls, styleRules, type GuardReport } from "./guardrails";
-import { appendProfileSection, improvedFolderOf, parseContact, readProfile, resumeText } from "./files";
+import { ATS_RULES, extractTerms, fillSkills, materialOf, parsedText, scoreAts, termsBlock, verifyEvidence, type AtsReport } from "./ats";
+import { appendProfileSection, improvedFolderOf, parseContact, readProfile, resumePath, resumeText } from "./files";
 import { knowledgeDigest, knowledgeItems, loadKnowledge, shortlistRepos } from "./knowledge/cards";
 import { renderLatex, renderText } from "./latex";
 import { IMPROVED_DIR, PANEL_DIR, safeSegment } from "./paths";
 import { REVIEWERS, REVIEWER_SYSTEM, SCREEN_BRIEF, reviewerPrompt, verdictOf, type ReviewerId } from "./reviewers";
-import { CvPicks, Email, Findings, Ideas, JobDetails, LIMITS, NEEDS, ProjectTurn, Rebuild, ResumeDoc, Sequence, STAGES, type Board, type CvOption, type ProjectIdea, type Stage, type Synthesis, type Writeup } from "./schemas";
+import { AtsTerms, CvPicks, Email, Findings, Ideas, JobDetails, LIMITS, NEEDS, ProjectTurn, Rebuild, ResumeDoc, Sequence, STAGES, type Board, type CvOption, type ProjectIdea, type Stage, type Synthesis, type Writeup } from "./schemas";
 import { importJob } from "./import-job";
 import { allRuns, getRun, putRun } from "./db";
 
@@ -83,6 +84,8 @@ export interface Run {
   cvOptions?: CvOption[];
   // What the style and fact checks changed on the latest resume and CV.
   guard?: Partial<Record<DocKind, GuardReport & { at: string }>>;
+  // The posting's terms, and how the reviewed resume and the rebuilt PDF match them.
+  ats?: { terms: AtsTerms; evidence?: Record<string, string>; before?: AtsReport; after?: AtsReport };
   companyBrief?: string;
   companyResearchedAt?: string;
   companyIdeas?: ProjectIdea[];
@@ -106,6 +109,7 @@ export type RunEvent =
   | { type: "pdf"; pdf: NonNullable<Run["pdf"]> }
   | { type: "cv"; cv: NonNullable<Run["cv"]> }
   | { type: "guard"; kind: DocKind; report: GuardReport & { at: string } }
+  | { type: "ats"; ats: NonNullable<Run["ats"]> }
   | { type: "company"; brief: string; ideas: ProjectIdea[] }
   | { type: "imported"; folder: string; title: string; company: string }
   | { type: "details"; details: JobDetails }
@@ -148,7 +152,7 @@ Reword and reorder freely, and use the posting's own vocabulary wherever an exis
 
 Choose the Projects section from the whole knowledge base, not just the projects already on the resume: pick the 2-4 repos that best answer this posting and the panel's gaps, preferring repos with real commits by the candidate and higher maturity, and use the repo URL from the knowledge base. A repo of kind "template-or-copy" or "learning" is not evidence of professional skill. Work in an employer's org repo supports that employer's experience bullets, not a separate project. The portfolio's case studies and posts are the candidate's own writing; their technical details may back a bullet, but a claim found only on the portfolio needs a question. Projects the candidate added in the app (see the profile) are theirs: mark one "(in progress)" in its name if its status says so.`;
 
-const rebuildSystem = () => `${REBUILD_SYSTEM}\n\n${styleRules("Resume")}`;
+const rebuildSystem = () => `${REBUILD_SYSTEM}\n\n${styleRules("Resume")}\n\n${ATS_RULES}`;
 
 const IDEAS_SYSTEM = `You suggest 3 to 5 short projects a candidate could BUILD to close the biggest gaps a hiring panel found for one job posting. Each must be finishable in under a week by one person, use the posting's stack where possible, and build on what the candidate already knows. Prefer extending one of the candidate's existing repos (set "extends" to its full name) when that is faster. Never suggest something the knowledge base shows they have already built. "bulletOnceBuilt" is a resume bullet for after it is built, with measurable results left as placeholders like <N>.`;
 
@@ -336,10 +340,46 @@ async function* checked(run: Run, doc: ResumeDoc, kind: DocKind, profile: string
   return result.doc;
 }
 
+// What the candidate can back a term with: the resume the chain started from,
+// the profile and the whole knowledge base.
+async function materialFor(run: Run, profile: string) {
+  const [resume, knowledge] = await Promise.all([resumeText(run.originResume ?? run.resumeFile).catch(() => ""), loadKnowledge()]);
+  return materialOf({ profile, resume, knowledge: knowledgeDigest(knowledge) });
+}
+
+// The posting's terms, extracted once per run (runs made before this get them
+// on their next rebuild), and the reviewed resume's score against them.
+async function atsReady(run: Run, material: Awaited<ReturnType<typeof materialFor>>, terms?: AtsTerms | null): Promise<NonNullable<Run["ats"]> | null> {
+  try {
+    run.ats ??= { terms: terms ?? (await extractTerms(run.jobText, run.id)) };
+    run.ats.evidence ??= await verifyEvidence(run.ats.terms.terms, material, run.id).catch(() => ({}));
+  } catch {
+    return null; // the match score is a guide; never fail a run on it
+  }
+  // The reviewed PDF may since have been replaced; fall back to the original.
+  for (const file of [run.resumeFile, run.originResume].filter((f): f is string => Boolean(f))) {
+    if (run.ats.before) break;
+    try {
+      run.ats.before = scoreAts(await parsedText(await resumePath(file)), run.ats, material);
+    } catch {}
+  }
+  return run.ats;
+}
+
 // Check the resume, re-screen it, compile the PDF, write the reports.
 async function* finish(run: Run): AsyncGenerator<RunEvent> {
   const ctx = await candidateContext(run);
   run.synthesis!.resume = yield* checked(run, run.synthesis!.resume, "Resume", ctx.profile);
+  const material = await materialFor(run, ctx.profile);
+  const ats = await atsReady(run, material);
+  let added: string[] = [];
+  if (ats) {
+    // Supported terms the writer still left out go into Skills.
+    const draft = scoreAts(renderText(run.synthesis!.resume, ctx.contact, false), ats, material, run.synthesis!.resume);
+    const filled = fillSkills(run.synthesis!.resume, draft, "Resume");
+    run.synthesis!.resume = filled.doc;
+    added = filled.added;
+  }
   yield { type: "synthesis", synthesis: run.synthesis! };
   yield { type: "stage", stage: "Re-running the automated screen and compiling the PDF" };
   const [screenResult, pdf] = await Promise.all([screen(run.jobText, improvedText(run, ctx), run.id), buildPdf(run, run.synthesis!.resume, ctx.profile)]);
@@ -347,6 +387,11 @@ async function* finish(run: Run): AsyncGenerator<RunEvent> {
   yield { type: "rescreen", screen: screenResult };
   run.pdf = pdf;
   yield { type: "pdf", pdf };
+  if (ats) {
+    // Scored on the text parsed back out of the PDF: what a tracker reads.
+    ats.after = scoreAts(await parsedText(path.join(IMPROVED_DIR, pdf.folder, pdf.file)), ats, material, run.synthesis!.resume, added);
+    yield { type: "ats", ats };
+  }
   run.error = undefined;
   await saveRun(run);
   await writeReports(run, ctx.profile);
@@ -384,6 +429,7 @@ export function runPanel(input: { jobText: string; resumeFile: string }): AsyncG
     // Picked while the reviewers read, so it adds no wait.
     const shortlist = shortlistRepos(knowledge, input.jobText, { runId: run.id, action: "shortlist" });
     const details = extractDetails(input.jobText, run.id);
+    const terms = extractTerms(input.jobText, run.id).catch(() => null);
 
     yield { type: "stage", stage: "Seven reviewers are reading the resume" };
     // All seven at once; each is reported as it lands.
@@ -417,7 +463,9 @@ export function runPanel(input: { jobText: string; resumeFile: string }): AsyncG
     yield { type: "stage", stage: "Rebuilding the resume" };
     run.shortlist = await shortlist;
     const ctx = await candidateContext(run);
-    const context = contextBlock(run, ctx, resume);
+    const ats = await atsReady(run, await materialFor(run, ctx.profile), await terms);
+    if (ats) yield { type: "ats", ats };
+    const context = `${contextBlock(run, ctx, resume)}${ats?.before ? `\n\n${termsBlock(ats.before)}` : ""}`;
     // Project ideas are written on request (Project studio), not on every run.
     const rebuild = await askStructured({ system: rebuildSystem(), prompt: `${context}\n\n${mistakesBlock(findings)}`, schema: Rebuild, effort: "medium", tier: "writer", tag: { runId: run.id, action: "rebuild" } });
     run.details = (await details) ?? undefined;
@@ -549,7 +597,7 @@ export async function addProject(id: string, project: AddedProject): Promise<Asy
     yield { type: "stage", stage: `Rebuilding the resume with ${project.name}` };
     const rebuild = await askStructured({
       system: rebuildSystem(),
-      prompt: `${contextBlock(run, ctx, improvedText(run, ctx))}\n\n${mistakesBlock(s)}\n\n<new_project>\nThe candidate just added this project. Include it in Projects, written from these details only.\nName: ${project.name}\nStatus: ${project.status}\nURL: ${project.url || "(none)"}\nStack: ${project.stack}\nDetails: ${project.details}\n</new_project>`,
+      prompt: `${contextBlock(run, ctx, improvedText(run, ctx))}${run.ats?.after ? `\n\n${termsBlock(run.ats.after)}` : ""}\n\n${mistakesBlock(s)}\n\n<new_project>\nThe candidate just added this project. Include it in Projects, written from these details only.\nName: ${project.name}\nStatus: ${project.status}\nURL: ${project.url || "(none)"}\nStack: ${project.stack}\nDetails: ${project.details}\n</new_project>`,
       schema: Rebuild,
       effort: "medium",
       tier: "writer", tag: { runId: run.id, action: "add-project" },
