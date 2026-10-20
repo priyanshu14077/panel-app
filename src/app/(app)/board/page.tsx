@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { DraftedEmail, DraftedSequence, Run } from "@/lib/pipeline";
 import { Chevron, CopyButton, PageHeader, Verdict } from "@/app/ui";
+import { FAMILIES, LEVELS, MODES, REGIONS, type JobFacets, type Similar } from "@/lib/jobs";
 import { STAGES, type Board, type JobDetails, type Stage, type Writeup } from "@/lib/schemas";
 
 interface Card {
@@ -19,7 +21,40 @@ interface Card {
   drafted: Record<Writeup, boolean>;
   due: string[];
   hasPdf: boolean;
+  facets: JobFacets;
+  repeats: { id: string; createdAt: string }[]; // other runs of the same posting
+  similar: Similar[];
 }
+
+type Counts = Record<"family" | "level" | "mode" | "region" | "verdict", Record<string, number>>;
+
+interface Filters {
+  q: string;
+  family: string;
+  level: string;
+  mode: string;
+  region: string;
+  verdict: string;
+  fit: boolean;
+  repeats: boolean;
+}
+
+const NO_FILTERS: Filters = { q: "", family: "", level: "", mode: "", region: "", verdict: "", fit: false, repeats: false };
+
+const SELECTS: { key: "family" | "level" | "mode" | "region" | "verdict"; label: string; any: string; values: readonly string[] }[] = [
+  { key: "family", label: "Role", any: "Any role", values: FAMILIES },
+  { key: "level", label: "Level", any: "Any level", values: LEVELS },
+  { key: "mode", label: "Work mode", any: "Any mode", values: MODES },
+  { key: "region", label: "Region", any: "Anywhere", values: REGIONS },
+  { key: "verdict", label: "Screen", any: "Any screen", values: ["PASS", "REJECT"] },
+];
+
+const paramsOf = (f: Filters) =>
+  new URLSearchParams(
+    Object.entries(f)
+      .filter(([, v]) => v)
+      .map(([k, v]) => [k, v === true ? "1" : String(v)]),
+  );
 
 const WRITEUP_INFO: { id: Writeup; label: string; what: string; email?: string }[] = [
   { id: "application-email", label: "Application email", what: "Sent with the resume, or as the application when the posting asks for an email.", email: "application" },
@@ -33,16 +68,30 @@ const WRITEUP_INFO: { id: Writeup; label: string; what: string; email?: string }
 const today = () => new Date().toISOString().slice(0, 10);
 
 export default function BoardPage() {
+  const router = useRouter();
   const [cards, setCards] = useState<Card[] | null>(null);
+  const [counts, setCounts] = useState<Counts | null>(null);
+  const [postings, setPostings] = useState(0);
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [open, setOpen] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    fetch("/api/board").then((r) => r.json()).then(setCards);
-  }, []);
+    fetch(`/api/board?${paramsOf(filters)}`)
+      .then((r) => r.json())
+      .then((b: { cards: Card[]; counts: Counts; postings: number }) => {
+        setCards(b.cards);
+        setCounts(b.counts);
+        setPostings(b.postings);
+      });
+  }, [filters]);
+  // Typing waits a beat; the selects apply at once.
   useEffect(() => {
-    load();
-  }, [load]);
+    const timer = setTimeout(load, filters.q ? 250 : 0);
+    return () => clearTimeout(timer);
+  }, [load, filters.q]);
+  const set = (patch: Partial<Filters>) => setFilters((f) => ({ ...f, ...patch }));
+  const filtered = JSON.stringify(filters) !== JSON.stringify(NO_FILTERS);
 
   async function patch(id: string, body: object) {
     const res = await fetch(`/api/runs/${id}/board`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -74,6 +123,44 @@ export default function BoardPage() {
           </>
         )}
       </PageHeader>
+
+      <div className="flex flex-wrap items-center gap-2" role="search" aria-label="Filter jobs">
+        <label className="sr-only" htmlFor="job-q">
+          Search jobs
+        </label>
+        <input id="job-q" className="input w-full sm:w-56" type="search" placeholder="Company or role" value={filters.q} onChange={(e) => set({ q: e.target.value })} />
+        {SELECTS.map((s) => (
+          <label key={s.key} className="contents">
+            <span className="sr-only">{s.label}</span>
+            <select className="input" value={filters[s.key]} onChange={(e) => set({ [s.key]: e.target.value })}>
+              <option value="">{s.any}</option>
+              {s.values.map((v) => (
+                <option key={v} value={v} disabled={!counts?.[s.key][v] && filters[s.key] !== v}>
+                  {v} ({counts?.[s.key][v] ?? 0})
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={filters.fit} onChange={(e) => set({ fit: e.target.checked })} />
+          No fit risk
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={filters.repeats} onChange={(e) => set({ repeats: e.target.checked })} />
+          Show repeat runs
+        </label>
+        {cards && (
+          <span className="mono ml-auto text-xs text-muted">
+            {cards.length} of {postings} {filters.repeats ? "runs" : "jobs"}
+          </span>
+        )}
+        {filtered && (
+          <button type="button" className="link-btn text-sm" onClick={() => setFilters(NO_FILTERS)}>
+            Clear
+          </button>
+        )}
+      </div>
 
       {!cards && <p className="text-muted streaming">Loading the board…</p>}
       {cards && (
@@ -124,6 +211,11 @@ export default function BoardPage() {
                       <div className="flex flex-wrap items-center gap-1.5">
                         {c.evalFails > 0 && <span className="badge badge--fail">{c.evalFails} eval fail{c.evalFails === 1 ? "" : "s"}</span>}
                         {c.details?.redFlags.length ? <span className="badge badge--warn">fit risk</span> : null}
+                        {!filters.repeats && c.repeats.length > 0 && (
+                          <span className="badge badge--neutral" title="Earlier runs of the same posting; open the card to see them">
+                            +{c.repeats.length} run{c.repeats.length === 1 ? "" : "s"}
+                          </span>
+                        )}
                         <span className="cost ml-auto">${c.cost.toFixed(2)}</span>
                       </div>
                       <WriteupDots card={c} />
@@ -151,7 +243,9 @@ export default function BoardPage() {
           })}
         </div>
       )}
-      {open && cards && <Drawer card={cards.find((c) => c.id === open)!} onClose={() => setOpen(null)} onPatch={(body) => patch(open, body)} onChanged={load} />}
+      {open && cards?.some((c) => c.id === open) && (
+        <Drawer card={cards.find((c) => c.id === open)!} onClose={() => setOpen(null)} onPatch={(body) => patch(open, body)} onChanged={load} onOpen={(id) => (cards.some((c) => c.id === id) ? setOpen(id) : router.push(`/workspace?run=${id}`))} />
+      )}
     </main>
   );
 }
@@ -178,7 +272,7 @@ function WriteupDots({ card }: { card: Card }) {
   );
 }
 
-function Drawer({ card, onClose, onPatch, onChanged }: { card: Card; onClose: () => void; onPatch: (body: object) => void; onChanged: () => void }) {
+function Drawer({ card, onClose, onPatch, onChanged, onOpen }: { card: Card; onClose: () => void; onPatch: (body: object) => void; onChanged: () => void; onOpen: (id: string) => void }) {
   const [run, setRun] = useState<Run | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -289,6 +383,39 @@ function Drawer({ card, onClose, onPatch, onChanged }: { card: Card; onClose: ()
                   </div>
                 ))}
             </dl>
+          </section>
+        )}
+
+        {(card.similar.length > 0 || card.repeats.length > 0) && (
+          <section className="flex flex-col gap-3">
+            <h3 className="text-md">Related jobs</h3>
+            {card.repeats.length > 0 && (
+              <p className="text-sm">
+                <span className="text-muted">Other runs of this posting: </span>
+                {card.repeats.map((r, i) => (
+                  <span key={r.id}>
+                    {i > 0 && ", "}
+                    <Link className="link-btn" href={`/workspace?run=${r.id}`}>
+                      {new Date(r.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                    </Link>
+                  </span>
+                ))}
+              </p>
+            )}
+            {card.similar.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {card.similar.map((s) => (
+                  <li key={s.id} className="flex items-baseline gap-2 text-sm">
+                    <button type="button" className="link-btn min-w-0 truncate text-left" onClick={() => onOpen(s.id)}>
+                      {s.company} · {s.role}
+                    </button>
+                    <span className="mono ml-auto shrink-0 text-xs text-muted" title="Shared stack and title words">
+                      {s.score}% alike
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         )}
 
