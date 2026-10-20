@@ -31,6 +31,8 @@ const DESCRIPTIONS: Record<string, string> = {
   "one-page": "The compiled PDF is exactly one page.",
   placeholders: "No [ADD], TODO or REPLACE text reached the PDF.",
   "links-real": "No placeholder URLs in the PDF.",
+  "ats-match": "Posting terms found in the parsed PDF, required ones weighted three times, full credit only when shown in use.",
+  "ats-format": "Standard headings, contact details in the text, the posting's title, one date format, no keyword stuffing.",
   "open-questions": "Questions still waiting on you (their lines are held back).",
   numbers: "Every number on the resume appears in your original resume, profile or knowledge base.",
   skills: "Every listed skill appears in your sources.",
