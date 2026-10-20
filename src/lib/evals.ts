@@ -5,6 +5,7 @@ import { askStructured } from "./claude";
 import { knowledgeDigest, loadKnowledge } from "./knowledge/cards";
 import { readProfile, resumeText } from "./files";
 import { KNOWLEDGE_DIR } from "./paths";
+import { BANNED } from "./guardrails";
 import { loadRun, saveRun, type Run } from "./pipeline";
 import { LIMITS, NEEDS, type ResumeDoc } from "./schemas";
 
@@ -23,23 +24,7 @@ export interface JudgeResult {
   claims: { line: string; verdict: "supported" | "partly" | "unsupported"; evidence: string }[];
 }
 
-// Phrases that mark generic, padded writing. Checked in emails, outreach and chat answers.
-export const BANNED = [
-  "passionate",
-  "thrilled",
-  "excited to",
-  "leverage",
-  "delve",
-  "synergy",
-  "hope this email finds you",
-  "hope this finds you",
-  "just bumping",
-  "i am writing to",
-  "dynamic team",
-  "fast-paced environment",
-  "results-driven",
-  "game-changer",
-];
+export { BANNED } from "./guardrails";
 
 const words = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
 const norm = (s: string) => s.toLowerCase().replace(/[,\s]+/g, " ");

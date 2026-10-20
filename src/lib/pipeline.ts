@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { askResearch, askStructured, askText, streamChat } from "./claude";
 import { compileResume, pdfName, type DocKind, type PdfCheck } from "./compile";
+import { guard, knownUrls, styleRules, type GuardReport } from "./guardrails";
 import { appendProfileSection, improvedFolderOf, parseContact, readProfile, resumeText } from "./files";
 import { knowledgeDigest, knowledgeItems, loadKnowledge, shortlistRepos } from "./knowledge/cards";
 import { renderLatex, renderText } from "./latex";
@@ -80,6 +81,8 @@ export interface Run {
   // The longer CV, built on request from the resume plus knowledge-base picks.
   cv?: { folder: string; file: string; check: PdfCheck; picks: string[] };
   cvOptions?: CvOption[];
+  // What the style and fact checks changed on the latest resume and CV.
+  guard?: Partial<Record<DocKind, GuardReport & { at: string }>>;
   companyBrief?: string;
   companyResearchedAt?: string;
   companyIdeas?: ProjectIdea[];
@@ -102,6 +105,7 @@ export type RunEvent =
   | { type: "rescreen"; screen: Screen }
   | { type: "pdf"; pdf: NonNullable<Run["pdf"]> }
   | { type: "cv"; cv: NonNullable<Run["cv"]> }
+  | { type: "guard"; kind: DocKind; report: GuardReport & { at: string } }
   | { type: "company"; brief: string; ideas: ProjectIdea[] }
   | { type: "imported"; folder: string; title: string; company: string }
   | { type: "details"; details: JobDetails }
@@ -140,9 +144,11 @@ const FINDINGS_SYSTEM = `You run the merge stage of a seven-member hiring panel.
 
 const REBUILD_SYSTEM = `You rebuild a resume for one job posting, fixing every mistake the hiring panel found. ${FACT_RULES}
 
-Reword and reorder freely, and use the posting's own vocabulary wherever an existing fact supports it. When a fix needs a fact you do not have, still write the best line, end it with [[needs:<question-id>]], and add that question to "questions" (short kebab-case id). Never ask what the profile already answers. Set "headline" to the role title for this posting; it is printed under the name. Leave out the candidate's name and contact details; they are added separately. Use "" for a missing url. Keep it to one page: at most 5 bullets per role and 2-3 per project.
+Reword and reorder freely, and use the posting's own vocabulary wherever an existing fact supports it. When a fix needs a fact you do not have, still write the best line, end it with [[needs:<question-id>]], and add that question to "questions" (short kebab-case id). Never ask what the profile already answers. Set "headline" to the role title for this posting; it is printed under the name. Leave out the candidate's name and contact details; they are added separately. Use "" for a missing url.
 
 Choose the Projects section from the whole knowledge base, not just the projects already on the resume: pick the 2-4 repos that best answer this posting and the panel's gaps, preferring repos with real commits by the candidate and higher maturity, and use the repo URL from the knowledge base. A repo of kind "template-or-copy" or "learning" is not evidence of professional skill. Work in an employer's org repo supports that employer's experience bullets, not a separate project. The portfolio's case studies and posts are the candidate's own writing; their technical details may back a bullet, but a claim found only on the portfolio needs a question. Projects the candidate added in the app (see the profile) are theirs: mark one "(in progress)" in its name if its status says so.`;
+
+const rebuildSystem = () => `${REBUILD_SYSTEM}\n\n${styleRules("Resume")}`;
 
 const IDEAS_SYSTEM = `You suggest 3 to 5 short projects a candidate could BUILD to close the biggest gaps a hiring panel found for one job posting. Each must be finishable in under a week by one person, use the posting's stack where possible, and build on what the candidate already knows. Prefer extending one of the candidate's existing repos (set "extends" to its full name) when that is faster. Never suggest something the knowledge base shows they have already built. "bulletOnceBuilt" is a resume bullet for after it is built, with measurable results left as placeholders like <N>.`;
 
@@ -154,11 +160,15 @@ const RESEARCH_SYSTEM = `You research a company for a job applicant. Use web sea
 
 const REVISE_SYSTEM = `You update a resume after the candidate answered open questions. For every line that ends with [[needs:<id>]] for an answered question: rewrite the line using the answer and remove the marker. If the answer is "none", "no" or "skip", delete that line. Leave lines for unanswered questions unchanged. Never add facts that are not in the answers, the profile or the existing resume. Keep it to one page.`;
 
+const reviseSystem = () => `${REVISE_SYSTEM}\n\n${styleRules("Resume")}`;
+
 const CV_PICKS_SYSTEM = `You help a candidate choose what to add to a CV for one job posting. From the list of their repositories and portfolio pages, pick up to 15 items that best prove fit for this posting, most relevant first. Prefer real products, client work and repos with many commits by the candidate over learning repos and templates. Leave out anything with no link to the posting. Return exact ids from the list.`;
 
 const CV_SYSTEM = `You write a CV for one job posting: a fuller version of the candidate's tailored resume, up to two pages. ${FACT_RULES}
 
-Start from the tailored resume: keep its headline, experience, education and order, and keep its best lines. Then go deeper: up to 6 bullets per role, and a Projects entry for each repository the candidate selected (3-4 bullets each, the repo URL from the knowledge base), most relevant to the posting first. Keep the resume's own projects unless a selected item covers the same work. A selected portfolio page becomes a project when it describes something the candidate built, and otherwise backs bullets elsewhere. Use the posting's vocabulary wherever an existing fact supports it. Never write a line that needs a fact you do not have: leave it out. Leave out the candidate's name and contact details; they are added separately. Use "" for a missing url.`;
+Start from the tailored resume: keep its headline, experience, education and order, and keep its best lines. Then go deeper: more bullets per role, and a Projects entry for each repository the candidate selected (the repo URL from the knowledge base), most relevant to the posting first. Keep the resume's own projects unless a selected item covers the same work. A selected portfolio page becomes a project when it describes something the candidate built, and otherwise backs bullets elsewhere. Use the posting's vocabulary wherever an existing fact supports it. Never write a line that needs a fact you do not have: leave it out. Leave out the candidate's name and contact details; they are added separately. Use "" for a missing url.`;
+
+const cvSystem = () => `${CV_SYSTEM}\n\n${styleRules("CV")}`;
 
 const CHAT_SYSTEM = `You help a job candidate with one application: answering application-form questions, tightening answers, and preparing for screening calls. Write as the candidate, in the first person, in crisp technical language. No filler, no clichés ("passionate", "leverage", "delve", "thrilled", "I'm excited to"), no generic claims a reader can't check. Prefer specific systems, numbers and decisions from the candidate's real work.
 
@@ -314,9 +324,23 @@ async function screen(job: string, resume: string, runId: string): Promise<Scree
   return { verdict: verdictOf(text), text };
 }
 
-// Re-screen the rebuilt resume, compile the PDF, write the reports.
+// The style and fact checks on a freshly written resume or CV: deterministic
+// fixes, then one fast-tier rewrite of only the lines still breaking a rule.
+async function* checked(run: Run, doc: ResumeDoc, kind: DocKind, profile: string): AsyncGenerator<RunEvent, ResumeDoc> {
+  yield { type: "stage", stage: `Checking the ${kind === "CV" ? "CV" : "resume"}: dates, links, line length, tool lists` };
+  const knowledge = await loadKnowledge();
+  const result = await guard(doc, kind, { urls: knownUrls(profile, JSON.stringify(knowledge ?? {})), runId: run.id });
+  const report = { ...result.report, at: new Date().toISOString() };
+  run.guard = { ...run.guard, [kind]: report };
+  yield { type: "guard", kind, report };
+  return result.doc;
+}
+
+// Check the resume, re-screen it, compile the PDF, write the reports.
 async function* finish(run: Run): AsyncGenerator<RunEvent> {
   const ctx = await candidateContext(run);
+  run.synthesis!.resume = yield* checked(run, run.synthesis!.resume, "Resume", ctx.profile);
+  yield { type: "synthesis", synthesis: run.synthesis! };
   yield { type: "stage", stage: "Re-running the automated screen and compiling the PDF" };
   const [screenResult, pdf] = await Promise.all([screen(run.jobText, improvedText(run, ctx), run.id), buildPdf(run, run.synthesis!.resume, ctx.profile)]);
   run.rescreens.push(screenResult);
@@ -395,7 +419,7 @@ export function runPanel(input: { jobText: string; resumeFile: string }): AsyncG
     const ctx = await candidateContext(run);
     const context = contextBlock(run, ctx, resume);
     const [rebuild, ideas] = await Promise.all([
-      askStructured({ system: REBUILD_SYSTEM, prompt: `${context}\n\n${mistakesBlock(findings)}`, schema: Rebuild, effort: "medium", tier: "writer", tag: { runId: run.id, action: "rebuild" } }),
+      askStructured({ system: rebuildSystem(), prompt: `${context}\n\n${mistakesBlock(findings)}`, schema: Rebuild, effort: "medium", tier: "writer", tag: { runId: run.id, action: "rebuild" } }),
       askStructured({ system: IDEAS_SYSTEM, prompt: `${context}\n\n${mistakesBlock(findings)}`, schema: Ideas, effort: "medium", tier: "writer", tag: { runId: run.id, action: "ideas" } }),
     ]);
     run.details = (await details) ?? undefined;
@@ -430,7 +454,7 @@ export async function answerQuestions(id: string, answers: Record<string, string
     yield { type: "stage", stage: "Rewriting the resume with your answers" };
     const qa = answered.map((q) => `<answer question_id="${q.id}" question="${q.question}">\n${answers[q.id]}\n</answer>`).join("\n");
     s.resume = await askStructured({
-      system: REVISE_SYSTEM,
+      system: reviseSystem(),
       prompt: `<resume_json>\n${JSON.stringify(s.resume)}\n</resume_json>\n\n<answers>\n${qa}\n</answers>\n\n<candidate_profile>\n${ctx.profile}\n</candidate_profile>`,
       schema: ResumeDoc,
       effort: "medium",
@@ -503,7 +527,7 @@ export async function addProject(id: string, project: AddedProject): Promise<Asy
     const ctx = await candidateContext(run);
     yield { type: "stage", stage: `Rebuilding the resume with ${project.name}` };
     const rebuild = await askStructured({
-      system: REBUILD_SYSTEM,
+      system: rebuildSystem(),
       prompt: `${contextBlock(run, ctx, improvedText(run, ctx))}\n\n${mistakesBlock(s)}\n\n<new_project>\nThe candidate just added this project. Include it in Projects, written from these details only.\nName: ${project.name}\nStatus: ${project.status}\nURL: ${project.url || "(none)"}\nStack: ${project.stack}\nDetails: ${project.details}\n</new_project>`,
       schema: Rebuild,
       effort: "medium",
@@ -584,7 +608,7 @@ export async function createCv(id: string, picks: string[]): Promise<AsyncGenera
     const pages = items.filter((i) => i.type === "page").map((i) => i.id);
     yield { type: "stage", stage: `Writing the CV with ${items.length} item${items.length === 1 ? "" : "s"} from your knowledge base` };
     const doc = await askStructured({
-      system: CV_SYSTEM,
+      system: cvSystem(),
       prompt: [
         `<job_posting>\n${run.jobText}\n</job_posting>`,
         `<tailored_resume>\n${renderText(run.synthesis.resume, contact, false)}\n</tailored_resume>`,
@@ -596,9 +620,10 @@ export async function createCv(id: string, picks: string[]): Promise<AsyncGenera
       tier: "writer",
       tag: { runId: run.id, action: "cv" },
     });
+    const fitted = yield* checked(run, doc, "CV", profile);
     yield { type: "stage", stage: "Compiling the CV" };
     const folder = run.pdf?.folder ?? run.outputFolder ?? outputFolder(run.synthesis, run.createdAt);
-    run.cv = { ...(await compileFitted(doc, profile, folder, "CV")), picks: items.map((i) => i.id) };
+    run.cv = { ...(await compileFitted(fitted, profile, folder, "CV")), picks: items.map((i) => i.id) };
     yield { type: "cv", cv: run.cv };
     run.error = undefined;
     await saveRun(run);
