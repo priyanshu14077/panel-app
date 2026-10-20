@@ -64,8 +64,11 @@ THREE WEAKEST LINES: each quoted exactly from the resume, with one sentence on w
 export const REVIEWER_SYSTEM =
   "You are one member of a hiring panel judging a resume against a job posting. Be honest and specific, and never flatter. Quote the resume exactly when you cite it.";
 
-export function reviewerPrompt(brief: string, job: string, resume: string): string {
-  return `${brief}\n\n<job_posting>\n${job}\n</job_posting>\n\n<resume>\n${resume}\n</resume>`;
+// Today's date lets a reviewer tell a finished degree from one still in
+// progress; without it "Graduated Jun 2026" reads as a future date.
+export function reviewerPrompt(brief: string, job: string, resume: string, today = new Date()): string {
+  const month = today.toLocaleString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
+  return `Today is ${today.toISOString().slice(0, 10)}. Any month up to and including ${month} is in the past, so a degree dated in one of those months has finished.\n\n${brief}\n\n<job_posting>\n${job}\n</job_posting>\n\n<resume>\n${resume}\n</resume>`;
 }
 
 // The first word of each verdict line, for the summary chips in the UI.

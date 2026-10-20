@@ -1,5 +1,7 @@
-import { connection } from "next/server";
+import { connection, type NextRequest } from "next/server";
+import { filterJobs, jobFacetCounts, type JobFilter } from "@/lib/db";
 import { evaluateRun } from "@/lib/evals";
+import { jobFacets, similarJobs } from "@/lib/jobs";
 import { loadAllRuns, type Run } from "@/lib/pipeline";
 import type { Board } from "@/lib/schemas";
 import { readUsage } from "@/lib/usage";
@@ -32,9 +34,29 @@ function dueFor(run: Run, board: Board): string[] {
   return due;
 }
 
-export async function GET() {
+function filterOf(p: URLSearchParams): JobFilter {
+  const text = (k: string) => p.get(k) || undefined;
+  return {
+    q: text("q"),
+    family: text("family"),
+    level: text("level"),
+    mode: text("mode"),
+    region: text("region"),
+    verdict: text("verdict"),
+    stage: text("stage"),
+    fit: p.get("fit") === "1",
+    minAts: Number(p.get("minAts")) || undefined,
+    repeats: p.get("repeats") === "1",
+  };
+}
+
+export async function GET(req: NextRequest) {
   await connection(); // the database is read synchronously; never prerender it
-  const [runs, usage] = await Promise.all([loadAllRuns(), readUsage()]);
+  const [all, usage] = await Promise.all([loadAllRuns(), readUsage()]);
+  const byId = new Map(all.map((r) => [r.id, r]));
+  const matches = filterJobs(filterOf(req.nextUrl.searchParams));
+  const runs = matches.map((m) => byId.get(m.id)).filter((r): r is Run => Boolean(r));
+  const repeats = new Map(matches.map((m) => [m.id, all.filter((r) => r.id !== m.id && r.synthesis && jobFacets(r).groupKey === m.groupKey).map((r) => ({ id: r.id, createdAt: r.createdAt }))]));
   const cost = new Map<string, number>();
   for (const u of usage) if (u.runId) cost.set(u.runId, (cost.get(u.runId) ?? 0) + u.cost);
 
@@ -63,7 +85,10 @@ export async function GET() {
       },
       due: dueFor(run, board),
       hasPdf: Boolean(run.pdf),
+      facets: jobFacets(run),
+      repeats: repeats.get(run.id) ?? [],
+      similar: similarJobs(run, all),
     });
   }
-  return Response.json(cards);
+  return Response.json({ cards, counts: jobFacetCounts(), postings: new Set(all.filter((r) => r.synthesis).map((r) => jobFacets(r).groupKey)).size });
 }
