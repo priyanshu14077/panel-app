@@ -46,7 +46,7 @@
 
 /* ---------- App pieces not in the design recipes ------------------------- */
 @layer components {
-  /* A reviewer who is undecided. Tangerine, because it is a warning. */
+  /* A reviewer who is undecided. Sky tint, because it is a caution. */
   .verdict--maybe { background: var(--color-warn-tint); color: var(--color-warn-text); }
 
   /* Segmented control: tabs inside a run, the outreach target picker. */
@@ -84,7 +84,7 @@
   .font-display { font-variation-settings: "wdth" var(--display-wdth); }
   .cost, .limit, .mistake__quote { font-variation-settings: "wdth" var(--mono-wdth); }
 
-  /* Two-tone headings: the phrase that matters, in tangerine. On Ember it is a
+  /* Two-tone headings: the phrase that matters, in sky. On Ember it is a
      glowing gradient; elsewhere plain accent text. */
   .hl { color: var(--color-accent-text); }
   .ember .hl { background: var(--gradient-accent); -webkit-background-clip: text; background-clip: text;
@@ -97,7 +97,7 @@
   /* A posting keyword the project interview added to a bullet. */
   .kw { background: var(--color-accent-tint); color: var(--color-accent-text); border-radius: 4px; padding: 0 3px; font-weight: 600; }
 
-  /* Brand mark: plum square, tangerine dot. */
+  /* Brand mark: plum square, sky dot. */
   .brand-mark { position: relative; width: 28px; height: 28px; border-radius: var(--radius-sm); background: var(--color-primary); flex: none; }
   .brand-mark::after { content: ""; position: absolute; right: 6px; bottom: 6px; width: 8px; height: 8px;
                        border-radius: var(--radius-pill); background: var(--color-accent); }

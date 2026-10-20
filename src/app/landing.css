@@ -16,7 +16,7 @@
   filter: blur(30px); animation: lp-aurora 14s ease-in-out infinite alternate;
 }
 .landing .sh-h1 { font-weight: 900; font-variation-settings: "wdth" 118; letter-spacing: -.035em; line-height: .95; }
-/* The payoff of the headline, lit: same face, tangerine gradient, no italic. */
+/* The payoff of the headline, lit: same face, sky gradient, no italic. */
 .landing .sh-accent { font-family: inherit; font-style: normal; font-weight: inherit; letter-spacing: inherit;
                       background: var(--gradient-accent); -webkit-background-clip: text; background-clip: text;
                       -webkit-text-fill-color: transparent; filter: drop-shadow(0 0 30px var(--aurora-1)); }
@@ -38,7 +38,7 @@
   .landing .sh-links li:not(.sh-keep) { display: block; }
 }
 
-/* Brand mark, lit: the plum square and tangerine dot would both be tangerine here. */
+/* Brand mark, lit: the plum square and sky dot would both be sky here. */
 .landing .brand-mark { background: var(--gradient-accent); box-shadow: var(--glow-accent); }
 .landing .brand-mark::after { background: var(--color-text-on-accent); }
 
