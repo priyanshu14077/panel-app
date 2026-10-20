@@ -1,4 +1,4 @@
-# Hiring Panel — design system (Oat · Plum · Tangerine)
+# Hiring Panel — design system (Oat · Plum · Sky)
 
 Read this before touching anything in `src/app/`. Tokens live in `src/app/tokens.css`, imported at the top of `globals.css` into the base layer, so a Tailwind utility on an element still overrides a recipe. Shared pieces (Card, Verdict, LimitMeter, CopyButton, Notice, PageHeader) are in `src/app/ui.tsx`.
 
@@ -8,7 +8,7 @@ Hiring Panel is a workbench that tells you “no” seven times and then helps y
 
 - **Oat** (`#F3EDE2` ground, `#FBF8F2` cards): a warm, paper-like workspace. Resumes live on paper; so does the app.
 - **Plum** (`#5E2B72`): authority. Active tab, PASS verdict, selected resume, the Interviewing/Offer end of the board, the total-cost figure.
-- **Tangerine** (`#F2772B`): action and attention. The single “run everything” CTA, “due today” chips, held-back lines, the REJECT→PASS arrow.
+- **Sky** (periwinkle sky: glow `#7FB2F5`, light `#B7D2FB`, deep `#4F86E0`; light-theme tint `#DDE8FC`, text `#2F5FA8`): action and attention. The single “run everything” CTA, “due today” chips, held-back lines, the REJECT→PASS arrow.
 - **Berry** (`#A3313D` on `#F6DADC`): the only red. REJECT verdicts, failed evals, unsupported lines. Muted on purpose.
 - **Sage** (`#2F6B4F` on `#D8EBDF`): passed evals, supported lines, “unlocks line…”.
 
@@ -17,19 +17,20 @@ A dark plum-ground theme ships in `tokens.css` and follows the OS setting; `<htm
 ## Rules
 
 1. **No color literals in components.** Only `--color-*`, `--verdict-*`, `--severity-*`, `--eval-*`, `--col-*`, `--due-*`, `--limit-*`, `--chart-*`, or the Tailwind names mapped to them below. Add a semantic token to `tokens.css` if one is missing.
-2. **One tangerine CTA per screen.** Everything else is `.btn` (oat) or `.btn--primary` (plum).
+2. **One sky CTA per screen.** Everything else is `.btn` (oat) or `.btn--primary` (plum).
 3. **No pure white surfaces, no gradients, no drop shadows, no left-border accent on cards.** The quoted-line block is the one left-border element, and it's a quote.
-4. **Verdicts use the pill, never colored text alone.** PASS = plum pill, REJECT = berry pill, MAYBE = tangerine tint, pending = oat pill with `.streaming`. A reader's PASS means “no” and shows as a berry `PASS (NO)`.
+4. **Verdicts use the pill, never colored text alone.** PASS = plum pill, REJECT = berry pill, MAYBE = sky tint, pending = oat pill with `.streaming`. A reader's PASS means “no” and shows as a berry `PASS (NO)`.
 5. **Numbers that matter are mono.** Costs, token counts, character/word counts, quoted resume lines.
 6. **Type**: one family at two widths, plus a mono. Mona Sans expanded (`wdth` 125) and heavy (800–900) for `h1`/`h2`, KPI values and display numbers; Mona Sans at normal width for text; Martian Mono (`wdth` 87.5) for figures, token counts and quoted resume lines. They load via `next/font/google` in `layout.tsx` as `--font-mona` / `--font-martian`, which `--font-display` / `--font-body` / `--font-mono` read; `--display-wdth` and `--mono-wdth` set the widths. Never Inter, Roboto, Geist or Arial in the app UI.
-7. **Tangerine type**: a heading may light one phrase, its payoff, with `<span className="hl">` (a glowing tangerine gradient on Ember). The setup stays cream: "Everything after <span class=hl>the verdict</span>". On app pages headline figures (`.kpi-value`) take the gradient and page titles stay cream. Never light more than one phrase per heading.
+7. **Sky type**: a heading may light one phrase, its payoff, with `<span className="hl">` (a glowing sky gradient on Ember). The setup stays cream: "Everything after <span class=hl>the verdict</span>". On app pages headline figures (`.kpi-value`) take the gradient and page titles stay cream. Never light more than one phrase per heading.
 
 ## Layout
 
-- **Shell**: a left rail (`--sidebar-width`, `--color-bg-sidebar`) with the brand mark (plum square, tangerine dot), the four `.nav-tab`s (active = plum pill via `aria-current="page"`) and the recent runs. Below 900 px it becomes a top bar and the runs list hides.
+- **Shell**: a left rail (`--sidebar-width`, `--color-bg-sidebar`) with the brand mark (plum square, sky dot), the five `.nav-tab`s (active = plum pill via `aria-current="page"`) and the recent runs. Below 900 px it becomes a top bar and the runs list hides.
 - **Content**: `max-width: 1280px`, padding `24px 32px`; section gap `--space-6`; card gap `--space-4`. The board is the exception: full width, and the board scrolls sideways, never the page.
 - **Workspace, no run open**: New run card beside the Knowledge base card.
-- **Workspace, run open**: run header (company, role, Download PDF, New run) → one stat strip (automated screen REJECT → PASS leads, then readers who would advance it, mistakes, open questions) → segmented tabs → a two-column body from 1440 px, the right column sticky (PDF on Panel and Studio, the job's facts on Q&A and Outreach).
+- **Workspace, run open**: run header (company, role, Download PDF, New run) → one stat strip (automated screen REJECT → PASS leads, then readers who would advance it, mistakes, open questions) → segmented tabs. A finished run opens on **Resume**: the PDF takes the wide column (a Resume / CV segmented switch once a CV exists) and a 380 px sticky column from 1100 px holds the CV builder, Checks, open questions and the project-interview prompt. **Panel** is one card with a row per reviewer (expand for the full review) and the worst five mistakes, the rest behind "Show all". Elsewhere a two-column body from 1440 px, the right column sticky (PDF on Studio, the job's facts on Panel, Q&A and Outreach).
+- **History**: search box, a `.segmented` kind filter with counts, then company, board stage, author and date range; results are expandable `.card`s with Copy and Open in the run.
 - Controls ≥ `--control-height` (44 px), radius `--radius-md`. Cards `--radius-xl` with 1 px `--color-border`.
 
 ## Screen-by-screen
@@ -38,10 +39,10 @@ A dark plum-ground theme ships in `tokens.css` and follows the OS setting; `<htm
 - **The panel**: seven `.card.reviewer` in `repeat(auto-fill, minmax(260px, 1fr))`, in the order verdicts land, `aria-live="polite"`. Each opens to the full review. Not yet landed = `.verdict--pending`.
 - **What is wrong**: `.mistake` rows; the ranked list's top third is `--severity-high`, the bottom third `--severity-low`.
 - **Open questions**: a `.card` each; held-back lines with a `.heldback` chip, `.unlocks` count; an answer turns the chip sage, “none” strikes the line in `--color-text-disabled`. Submit is `.btn--primary`.
-- **Project studio**: company brief in `.card--sunken`, URLs as plum links; “Research the company” is the tab's tangerine CTA; idea cards with `.badge--accent` (gap) and `.badge--neutral` (repo it extends). Add-project submit is `.btn--primary`.
-- **Application Q&A**: questions on `--color-surface-sunken`, answers on `--color-surface`; a `.limit` meter when the question states a limit; `[brackets]` render as `.heldback`. Send is the tab's tangerine CTA.
-- **Outreach & email**: target picker is a `.segmented` control; vertical timeline with `.eyebrow` day markers and a `.card` per message, each with a limit meter. “Draft the sequence” is tangerine; email drafting is `.btn--primary`.
-- **Board**: six `.column`s with a 3 px `--col-*` stripe; `.kanban-card` with the screen's before → after pills, `.badge--fail` / `.badge--warn`, `.cost`, write-up dots, and a small `.due--today` chip beside the task text (tangerine stays small). The drawer is a `.card` slide-over on `--color-scrim`; Escape closes it.
+- **Project studio**: company brief in `.card--sunken`, URLs as plum links; “Research the company” is the tab's sky CTA; idea cards with `.badge--accent` (gap) and `.badge--neutral` (repo it extends). Add-project submit is `.btn--primary`.
+- **Application Q&A**: questions on `--color-surface-sunken`, answers on `--color-surface`; a `.limit` meter when the question states a limit; `[brackets]` render as `.heldback`. Send is the tab's sky CTA.
+- **Outreach & email**: target picker is a `.segmented` control; vertical timeline with `.eyebrow` day markers and a `.card` per message, each with a limit meter. “Draft the sequence” is sky; email drafting is `.btn--primary`.
+- **Board**: six `.column`s with a 3 px `--col-*` stripe; `.kanban-card` with the screen's before → after pills, `.badge--fail` / `.badge--warn`, `.cost`, write-up dots, and a small `.due--today` chip beside the task text (sky stays small). The drawer is a `.card` slide-over on `--color-scrim`; Escape closes it.
 - **Evals**: a tile per check (`.kpi-value` percentage, `.progress` filled with `--eval-pass/-warn/-fail` by rate); runs below as expanding rows with a `.table` of `.badge--pass/warn/fail`.
 - **Usage & cost**: four KPI cards (total spend `.kpi-value--cost`); spend split by tier in one stacked bar (writer `--chart-1`, research `--chart-2`, fast `--chart-3`); a feature table with a share bar in its tier colour; runs as expanding rows of every call, all figures mono.
 - **Knowledge base**: on `--color-bg-sidebar`; “Build knowledge base” / “Refresh” is `.btn--primary`; repo checkboxes are plum via `accent-color`; repos with no commits by you are muted; maturity is `.badge--neutral`.
@@ -63,14 +64,14 @@ A dark plum-ground theme ships in `tokens.css` and follows the OS setting; `<htm
 | `line`, `line-subtle`, `track` | `--color-border`, `--color-border-subtle`, `--color-track` |
 | `ink`, `muted`, `disabled` | `--color-text`, `--color-text-muted`, `--color-text-disabled` |
 | `primary`, `primary-tint`, `primary-tint-text` | plum |
-| `accent`, `accent-tint`, `accent-text` | tangerine |
+| `accent`, `accent-tint`, `accent-text` | sky |
 | `pass`, `warn`, `fail` and their `-tint` | `--eval-*` |
 | `scrim` | `--color-scrim` |
 
 Tailwind's `text-xs` … `text-2xl` and `rounded-sm` … `rounded-xl` read the token scale (12/13/18/28/32 px; 8/10/12/16 px radii). Use `min-[N]:` breakpoints only where no `sm:`/`xl:` variant on the same property competes; Tailwind sorts arbitrary breakpoints before named ones.
 
 ## The Ember theme: the landing page and the app
-Every page is now Ember: always dark, lit tangerine. Inside `.ember` (on the landing's root and the `(app)` layout), `tokens.css` redefines the semantic tokens (section 6), so utilities and recipes turn ember with no component changes: tangerine is the primary and the accent, plum is a supporting colour, berry is still the only red. Ember replaces rule 3: glow (`--glow-*`), gradients (`--gradient-accent`, `--aurora-*`) and shadows are allowed, but in the app they mark only what is live or won (the active tab, the run button, PASS, a draggable card, a due-today chip). The oat light theme in sections 2 and 3 is kept for reference and no page uses it.
+Every page is now Ember: always dark, lit sky blue. Inside `.ember` (on the landing's root and the `(app)` layout), `tokens.css` redefines the semantic tokens (section 6), so utilities and recipes turn ember with no component changes: sky is the primary and the accent, plum is a supporting colour, berry is still the only red. Ember replaces rule 3: glow (`--glow-*`), gradients (`--gradient-accent`, `--aurora-*`) and shadows are allowed, but in the app they mark only what is live or won (the active tab, the run button, PASS, a draggable card, a due-today chip). The oat light theme in sections 2 and 3 is kept for reference and no page uses it.
 
 ### App pages
 - Styles are in `src/app/ember-app.css`, imported into the components layer so a utility on an element still wins.

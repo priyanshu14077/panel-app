@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { PROFILE, PROFILE_MODELS } from "@/lib/claude";
 import { listRuns } from "@/lib/pipeline";
 import { readUsage, type UsageRecord } from "@/lib/usage";
@@ -19,6 +20,7 @@ function sum(records: UsageRecord[]) {
 const family = (action: string) => action.split(":")[0];
 
 export async function GET() {
+  await connection(); // the database is read synchronously; never prerender it
   const [records, runs] = await Promise.all([readUsage(), listRuns()]);
   const labels = new Map(runs.map((r) => [r.id, r.synthesis ? `${r.synthesis.job.company} · ${r.synthesis.job.role}` : r.id]));
 

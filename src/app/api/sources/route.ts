@@ -1,7 +1,9 @@
+import { connection } from "next/server";
 import { listJobs, listResumes, readProfile } from "@/lib/files";
 import { listRuns } from "@/lib/pipeline";
 
 export async function GET() {
+  await connection(); // the database is read synchronously; never prerender it
   // Label each improved PDF with the job its latest run was for.
   const labels = new Map<string, string>();
   for (const r of await listRuns()) {

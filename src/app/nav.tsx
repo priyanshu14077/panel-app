@@ -8,6 +8,7 @@ import type { Run } from "@/lib/pipeline";
 const LINKS = [
   { href: "/workspace", label: "Workspace" },
   { href: "/board", label: "Board" },
+  { href: "/history", label: "History" },
   { href: "/evals", label: "Evals" },
   { href: "/usage", label: "Usage & cost" },
 ];

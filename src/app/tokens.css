@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Hiring Panel theme — Oat · Plum · Tangerine
+   Hiring Panel theme — Oat · Plum · Sky
    --------------------------------------------------------------------------
    Imported once, at the top of globals.css, into the base layer so Tailwind
    utilities can still override a recipe.
@@ -7,13 +7,13 @@
    Rules for anyone (human or agent) writing UI in this repo:
      1. Components NEVER contain a color literal. Read a semantic token
         (--color-*, --verdict-*, --col-*, --eval-*, --chart-*). Primitives
-        (--oat-*, --plum-*, --tangerine-*) are referenced ONLY in this file.
+        (--oat-*, --plum-*, --sky-*) are referenced ONLY in this file.
      2. OAT is the ground: page, workspace panels, board columns, borders.
         Cards are --color-surface, never pure white.
      3. PLUM is the primary: active nav tab, the Run everything button's
         hover state, selected resume/repo, PASS verdicts, chart series 1,
         the Interviewing/Offer board columns.
-     4. TANGERINE is the accent: ONE primary CTA per screen ("Import the
+     4. SKY (periwinkle) is the accent: ONE primary CTA per screen ("Import the
         link and run everything", "Add project", "Draft"), "due today"
         badges, warnings, the brand dot, chart series 3. Never a text color
         except --color-accent-text; never a large background.
@@ -31,8 +31,8 @@
   --plum-100: #EADFF0; --plum-300: #B58CC6; --plum-500: #9B62AE;
   --plum-600: #5E2B72; --plum-700: #4A2159; --plum-900: #2A1733;
 
-  --tangerine-100: #FCE4D2; --tangerine-300: #F9B07A; --tangerine-500: #F2772B;
-  --tangerine-600: #E8641A; --tangerine-800: #B84A08;
+  --sky-100: #DDE8FC; --sky-300: #B7D2FB; --sky-500: #7FB2F5;
+  --sky-600: #4F86E0; --sky-800: #2F5FA8;
 
   --sage-100: #D8EBDF;  --sage-700: #2F6B4F;  --sage-300: #9CD3B4;
   --berry-100: #F6DADC; --berry-700: #A3313D; --berry-300: #F2A5AD;
@@ -70,16 +70,16 @@
   --color-link:              var(--plum-600);
   --color-link-hover:        var(--plum-700);
 
-  /* Accent (tangerine) */
-  --color-accent:       var(--tangerine-500);
-  --color-accent-hover: var(--tangerine-600);
-  --color-accent-tint:  var(--tangerine-100);
-  --color-accent-text:  var(--tangerine-800);
+  /* Accent (sky) */
+  --color-accent:       var(--sky-500);
+  --color-accent-hover: var(--sky-600);
+  --color-accent-tint:  var(--sky-100);
+  --color-accent-text:  var(--sky-800);
 
   /* Generic status */
   --color-success-tint: var(--sage-100);  --color-success-text: var(--sage-700);
   --color-danger-tint:  var(--berry-100); --color-danger-text:  var(--berry-700);
-  --color-warn-tint:    var(--tangerine-100); --color-warn-text: var(--tangerine-800);
+  --color-warn-tint:    var(--sky-100); --color-warn-text: var(--sky-800);
 
   /* --- App-specific: reviewer verdicts (panel cards, automated screen) --- */
   --verdict-pass-bg:     var(--plum-600);   /* PASS is plum: it's the win state */
@@ -88,29 +88,29 @@
   --verdict-reject-text: var(--berry-700);
   --verdict-pending-bg:  var(--oat-200);    /* streaming / not yet landed */
   --verdict-pending-text: var(--color-text-muted);
-  --verdict-before-after-arrow: var(--tangerine-600); /* REJECT → PASS arrow */
+  --verdict-before-after-arrow: var(--sky-600); /* REJECT → PASS arrow */
 
   /* --- App-specific: mistakes list (worst first) --- */
   --severity-high:   var(--berry-700);
-  --severity-medium: var(--tangerine-800);
+  --severity-medium: var(--sky-800);
   --severity-low:    var(--plum-500);
   --quote-bar:       var(--plum-300);       /* bar beside the quoted resume line */
   --quote-bg:        var(--color-surface-sunken);
 
   /* --- App-specific: open questions / held-back lines --- */
-  --heldback-bg:     var(--tangerine-100);  /* line held back from the PDF */
-  --heldback-text:   var(--tangerine-800);
+  --heldback-bg:     var(--sky-100);  /* line held back from the PDF */
+  --heldback-text:   var(--sky-800);
   --unlock-text:     var(--sage-700);       /* "unlocks line …" */
 
   /* --- App-specific: evals --- */
   --eval-pass:     var(--sage-700);
   --eval-pass-bg:  var(--sage-100);
-  --eval-warn:     var(--tangerine-800);
-  --eval-warn-bg:  var(--tangerine-100);
+  --eval-warn:     var(--sky-800);
+  --eval-warn-bg:  var(--sky-100);
   --eval-fail:     var(--berry-700);
   --eval-fail-bg:  var(--berry-100);
   --eval-supported:        var(--sage-700);   /* grounding judge */
-  --eval-partly-supported: var(--tangerine-800);
+  --eval-partly-supported: var(--sky-800);
   --eval-unsupported:      var(--berry-700);
 
   /* --- App-specific: Kanban board columns (header stripe + count pill) --- */
@@ -118,9 +118,9 @@
   --col-applied:         var(--plum-300);
   --col-in-conversation: var(--plum-500);
   --col-interviewing:    var(--plum-600);
-  --col-offer:           var(--tangerine-500);
+  --col-offer:           var(--sky-500);
   --col-closed:          var(--oat-500);
-  --due-today-bg:        var(--tangerine-500);  /* "due today" chip on a card */
+  --due-today-bg:        var(--sky-500);  /* "due today" chip on a card */
   --due-today-text:      var(--plum-900);
   --due-later-bg:        var(--oat-200);
   --due-later-text:      var(--color-text-muted);
@@ -129,17 +129,17 @@
   --cost-total:   var(--plum-600);
   --chart-1: var(--plum-600);      /* writer tier / primary series */
   --chart-2: var(--plum-500);      /* research tier */
-  --chart-3: var(--tangerine-500); /* fast tier / accent series */
+  --chart-3: var(--sky-500); /* fast tier / accent series */
   --chart-4: var(--oat-400);
   --chart-grid: var(--color-border-subtle);
 
   /* --- App-specific: character / word limit meters (outreach, Q&A) --- */
   --limit-ok:   var(--sage-700);
-  --limit-near: var(--tangerine-800);  /* ≥ 90 % of the limit */
+  --limit-near: var(--sky-800);  /* ≥ 90 % of the limit */
   --limit-over: var(--berry-700);
 
   /* Focus */
-  --color-focus: var(--tangerine-600);
+  --color-focus: var(--sky-600);
 
   /* Typography. --font-mona and --font-martian are set by next/font on <html>.
      Display is Mona Sans expanded and heavy; text is the same family at
@@ -170,7 +170,7 @@
 
 /* ---------- 3. Dark mode (plum ground) ------------------------------------ */
 /* The app shipped dark; this keeps a dark theme available. Oat becomes the
-   text, plum the ground, and plum/tangerine lighten to keep 4.5:1.          */
+   text, plum the ground, and plum/sky lighten to keep 4.5:1.          */
 :root[data-theme="dark"] { color-scheme: dark; }
 :root[data-theme="light"] { color-scheme: light; }
 
@@ -185,28 +185,28 @@
     --color-primary: var(--plum-300); --color-primary-hover: #C9A6D6;
     --color-primary-tint: #3F2650; --color-primary-tint-text: #E3D3EA;
     --color-link: var(--plum-300); --color-link-hover: #C9A6D6;
-    --color-accent: var(--tangerine-300); --color-accent-hover: #FBC297;
-    --color-accent-tint: #4A2A1A; --color-accent-text: var(--tangerine-300);
+    --color-accent: var(--sky-300); --color-accent-hover: #CFE0FC;
+    --color-accent-tint: #1E2A44; --color-accent-text: var(--sky-300);
     --color-success-tint: #1F3A2E; --color-success-text: var(--sage-300);
     --color-danger-tint: #43202A; --color-danger-text: var(--berry-300);
-    --color-warn-tint: #4A2A1A; --color-warn-text: var(--tangerine-300);
+    --color-warn-tint: #1E2A44; --color-warn-text: var(--sky-300);
     --verdict-pass-bg: var(--plum-300); --verdict-pass-text: var(--plum-900);
     --verdict-reject-bg: #43202A; --verdict-reject-text: var(--berry-300);
-    --verdict-pending-bg: #3A2347; --verdict-before-after-arrow: var(--tangerine-300);
-    --severity-high: var(--berry-300); --severity-medium: var(--tangerine-300); --severity-low: var(--plum-300);
+    --verdict-pending-bg: #3A2347; --verdict-before-after-arrow: var(--sky-300);
+    --severity-high: var(--berry-300); --severity-medium: var(--sky-300); --severity-low: var(--plum-300);
     --quote-bar: var(--plum-500);
-    --heldback-bg: #4A2A1A; --heldback-text: var(--tangerine-300); --unlock-text: var(--sage-300);
+    --heldback-bg: #1E2A44; --heldback-text: var(--sky-300); --unlock-text: var(--sage-300);
     --eval-pass: var(--sage-300); --eval-pass-bg: #1F3A2E;
-    --eval-warn: var(--tangerine-300); --eval-warn-bg: #4A2A1A;
+    --eval-warn: var(--sky-300); --eval-warn-bg: #1E2A44;
     --eval-fail: var(--berry-300); --eval-fail-bg: #43202A;
-    --eval-supported: var(--sage-300); --eval-partly-supported: var(--tangerine-300); --eval-unsupported: var(--berry-300);
+    --eval-supported: var(--sage-300); --eval-partly-supported: var(--sky-300); --eval-unsupported: var(--berry-300);
     --col-to-apply: #7E6A87; --col-applied: var(--plum-500); --col-in-conversation: var(--plum-300);
-    --col-interviewing: #C9A6D6; --col-offer: var(--tangerine-300); --col-closed: #5A4A62;
-    --due-today-bg: var(--tangerine-300); --due-later-bg: #3A2347;
+    --col-interviewing: #C9A6D6; --col-offer: var(--sky-300); --col-closed: #5A4A62;
+    --due-today-bg: var(--sky-300); --due-later-bg: #3A2347;
     --cost-total: var(--plum-300);
-    --chart-1: var(--plum-300); --chart-2: var(--plum-500); --chart-3: var(--tangerine-300); --chart-4: #7E6A87;
-    --limit-ok: var(--sage-300); --limit-near: var(--tangerine-300); --limit-over: var(--berry-300);
-    --color-focus: var(--tangerine-300);
+    --chart-1: var(--plum-300); --chart-2: var(--plum-500); --chart-3: var(--sky-300); --chart-4: #7E6A87;
+    --limit-ok: var(--sage-300); --limit-near: var(--sky-300); --limit-over: var(--berry-300);
+    --color-focus: var(--sky-300);
     scrollbar-color: #7E6A87 #1C0F24;
   }
 }
@@ -221,28 +221,28 @@
   --color-primary: var(--plum-300); --color-primary-hover: #C9A6D6;
   --color-primary-tint: #3F2650; --color-primary-tint-text: #E3D3EA;
   --color-link: var(--plum-300); --color-link-hover: #C9A6D6;
-  --color-accent: var(--tangerine-300); --color-accent-hover: #FBC297;
-  --color-accent-tint: #4A2A1A; --color-accent-text: var(--tangerine-300);
+  --color-accent: var(--sky-300); --color-accent-hover: #CFE0FC;
+  --color-accent-tint: #1E2A44; --color-accent-text: var(--sky-300);
   --color-success-tint: #1F3A2E; --color-success-text: var(--sage-300);
   --color-danger-tint: #43202A; --color-danger-text: var(--berry-300);
-  --color-warn-tint: #4A2A1A; --color-warn-text: var(--tangerine-300);
+  --color-warn-tint: #1E2A44; --color-warn-text: var(--sky-300);
   --verdict-pass-bg: var(--plum-300); --verdict-pass-text: var(--plum-900);
   --verdict-reject-bg: #43202A; --verdict-reject-text: var(--berry-300);
-  --verdict-pending-bg: #3A2347; --verdict-before-after-arrow: var(--tangerine-300);
-  --severity-high: var(--berry-300); --severity-medium: var(--tangerine-300); --severity-low: var(--plum-300);
+  --verdict-pending-bg: #3A2347; --verdict-before-after-arrow: var(--sky-300);
+  --severity-high: var(--berry-300); --severity-medium: var(--sky-300); --severity-low: var(--plum-300);
   --quote-bar: var(--plum-500);
-  --heldback-bg: #4A2A1A; --heldback-text: var(--tangerine-300); --unlock-text: var(--sage-300);
+  --heldback-bg: #1E2A44; --heldback-text: var(--sky-300); --unlock-text: var(--sage-300);
   --eval-pass: var(--sage-300); --eval-pass-bg: #1F3A2E;
-  --eval-warn: var(--tangerine-300); --eval-warn-bg: #4A2A1A;
+  --eval-warn: var(--sky-300); --eval-warn-bg: #1E2A44;
   --eval-fail: var(--berry-300); --eval-fail-bg: #43202A;
-  --eval-supported: var(--sage-300); --eval-partly-supported: var(--tangerine-300); --eval-unsupported: var(--berry-300);
+  --eval-supported: var(--sage-300); --eval-partly-supported: var(--sky-300); --eval-unsupported: var(--berry-300);
   --col-to-apply: #7E6A87; --col-applied: var(--plum-500); --col-in-conversation: var(--plum-300);
-  --col-interviewing: #C9A6D6; --col-offer: var(--tangerine-300); --col-closed: #5A4A62;
-  --due-today-bg: var(--tangerine-300); --due-later-bg: #3A2347;
+  --col-interviewing: #C9A6D6; --col-offer: var(--sky-300); --col-closed: #5A4A62;
+  --due-today-bg: var(--sky-300); --due-later-bg: #3A2347;
   --cost-total: var(--plum-300);
-  --chart-1: var(--plum-300); --chart-2: var(--plum-500); --chart-3: var(--tangerine-300); --chart-4: #7E6A87;
-  --limit-ok: var(--sage-300); --limit-near: var(--tangerine-300); --limit-over: var(--berry-300);
-  --color-focus: var(--tangerine-300);
+  --chart-1: var(--plum-300); --chart-2: var(--plum-500); --chart-3: var(--sky-300); --chart-4: #7E6A87;
+  --limit-ok: var(--sage-300); --limit-near: var(--sky-300); --limit-over: var(--berry-300);
+  --color-focus: var(--sky-300);
   scrollbar-color: #7E6A87 #1C0F24;
 }
 
@@ -372,67 +372,67 @@ code, pre, .mono { font-family: var(--font-mono); font-size: 0.86em; font-variat
 @media (prefers-reduced-motion: reduce) { .streaming { animation: none; } }
 
 /* ---------- 6. Ember: the landing page and the app ------------------------ */
-/* Always dark, lit tangerine. Inside .ember the semantic tokens are
+/* Always dark, lit sky blue. Inside .ember the semantic tokens are
    redefined, so every utility and recipe (bg-surface, .card, .verdict--pass,
    .btn--accent) turns ember without changes. Ember is the one theme where
    glow, gradients and shadows are allowed (see DESIGN.md). */
 :root {
   --ember-950: #110810; --ember-900: #160B13; --ember-850: #1C1018; --ember-800: #271621; --ember-700: #3A2230;
-  --ember-cream: #FCEFE6; --ember-muted: #C9B3AB; --ember-dim: #7D6670; --ember-ink: #1A0B05;
-  --amber-300: #FFB067; --tangerine-glow: #FF7A2E; --flame-600: #FF5A1F;
+  --ember-cream: #FCEFE6; --ember-muted: #C9B3AB; --ember-dim: #7D6670; --ember-ink: #0A1424;
+  --sky-glow: #7FB2F5;
 }
 .ember {
   color-scheme: dark;
-  accent-color: var(--tangerine-glow);
+  accent-color: var(--sky-glow);
   --color-bg: var(--ember-950); --color-bg-sidebar: var(--ember-900); --color-surface: var(--ember-850);
   --color-surface-hover: var(--ember-800); --color-surface-sunken: var(--ember-900);
-  --color-border: rgb(255 150 90 / 0.16); --color-border-subtle: rgb(255 150 90 / 0.09); --color-track: rgb(255 150 90 / 0.12);
+  --color-border: rgb(127 178 245 / 0.16); --color-border-subtle: rgb(127 178 245 / 0.09); --color-track: rgb(127 178 245 / 0.12);
   --color-scrim: rgb(10 4 8 / 0.7);
   --color-text: var(--ember-cream); --color-text-muted: var(--ember-muted); --color-text-disabled: var(--ember-dim);
   --color-text-on-primary: var(--ember-ink); --color-text-on-accent: var(--ember-ink);
-  --color-primary: var(--tangerine-glow); --color-primary-hover: var(--amber-300);
-  --color-primary-tint: rgb(255 122 46 / 0.14); --color-primary-tint-text: var(--amber-300);
-  --color-link: var(--amber-300); --color-link-hover: var(--ember-cream);
-  --color-accent: var(--tangerine-glow); --color-accent-hover: var(--amber-300);
-  --color-accent-tint: rgb(255 122 46 / 0.15); --color-accent-text: var(--amber-300); --color-accent-deep: var(--flame-600);
+  --color-primary: var(--sky-glow); --color-primary-hover: var(--sky-300);
+  --color-primary-tint: rgb(127 178 245 / 0.14); --color-primary-tint-text: var(--sky-300);
+  --color-link: var(--sky-300); --color-link-hover: var(--ember-cream);
+  --color-accent: var(--sky-glow); --color-accent-hover: var(--sky-300);
+  --color-accent-tint: rgb(127 178 245 / 0.15); --color-accent-text: var(--sky-300); --color-accent-deep: var(--sky-600);
   --color-success-tint: rgb(156 211 180 / 0.12); --color-success-text: var(--sage-300);
   --color-danger-tint: rgb(242 165 173 / 0.12); --color-danger-text: var(--berry-300);
-  --color-warn-tint: rgb(255 176 103 / 0.14); --color-warn-text: var(--amber-300);
-  --verdict-pass-bg: var(--tangerine-glow); --verdict-pass-text: var(--ember-ink);
+  --color-warn-tint: rgb(183 210 251 / 0.14); --color-warn-text: var(--sky-300);
+  --verdict-pass-bg: var(--sky-glow); --verdict-pass-text: var(--ember-ink);
   --verdict-reject-bg: rgb(242 165 173 / 0.12); --verdict-reject-text: var(--berry-300);
   --verdict-pending-bg: rgb(252 239 230 / 0.07); --verdict-pending-text: var(--ember-muted);
-  --verdict-before-after-arrow: var(--amber-300);
-  --severity-high: var(--berry-300); --severity-medium: var(--amber-300); --severity-low: var(--plum-300);
-  --quote-bar: var(--tangerine-glow); --quote-bg: var(--ember-900);
-  --eval-supported: var(--sage-300); --eval-partly-supported: var(--amber-300); --eval-unsupported: var(--berry-300);
-  --col-to-apply: var(--ember-dim); --col-applied: var(--plum-300); --col-in-conversation: var(--amber-300);
-  --col-interviewing: var(--tangerine-glow); --col-offer: var(--flame-600); --col-closed: var(--ember-700);
-  --due-today-bg: var(--tangerine-glow); --due-today-text: var(--ember-ink);
+  --verdict-before-after-arrow: var(--sky-300);
+  --severity-high: var(--berry-300); --severity-medium: var(--sky-300); --severity-low: var(--plum-300);
+  --quote-bar: var(--sky-glow); --quote-bg: var(--ember-900);
+  --eval-supported: var(--sage-300); --eval-partly-supported: var(--sky-300); --eval-unsupported: var(--berry-300);
+  --col-to-apply: var(--ember-dim); --col-applied: var(--plum-300); --col-in-conversation: var(--sky-300);
+  --col-interviewing: var(--sky-glow); --col-offer: var(--sky-600); --col-closed: var(--ember-700);
+  --due-today-bg: var(--sky-glow); --due-today-text: var(--ember-ink);
   --due-later-bg: var(--ember-800); --due-later-text: var(--ember-muted);
-  --limit-ok: var(--sage-300); --limit-near: var(--amber-300); --limit-over: var(--berry-300);
-  --chart-grid: rgb(255 150 90 / 0.09);
+  --limit-ok: var(--sage-300); --limit-near: var(--sky-300); --limit-over: var(--berry-300);
+  --chart-grid: rgb(127 178 245 / 0.09);
   --eval-pass: var(--sage-300); --eval-pass-bg: rgb(156 211 180 / 0.12);
-  --eval-warn: var(--amber-300); --eval-warn-bg: rgb(255 176 103 / 0.14);
+  --eval-warn: var(--sky-300); --eval-warn-bg: rgb(183 210 251 / 0.14);
   --eval-fail: var(--berry-300); --eval-fail-bg: rgb(242 165 173 / 0.12);
-  --heldback-bg: rgb(255 122 46 / 0.16); --heldback-text: var(--amber-300); --unlock-text: var(--sage-300);
-  --cost-total: var(--amber-300);
-  --chart-1: var(--tangerine-glow); --chart-2: var(--amber-300); --chart-3: var(--plum-300); --chart-4: var(--ember-dim);
-  --color-focus: var(--amber-300);
+  --heldback-bg: rgb(127 178 245 / 0.16); --heldback-text: var(--sky-300); --unlock-text: var(--sage-300);
+  --cost-total: var(--sky-300);
+  --chart-1: var(--sky-glow); --chart-2: var(--sky-300); --chart-3: var(--plum-300); --chart-4: var(--ember-dim);
+  --color-focus: var(--sky-300);
   scrollbar-color: var(--ember-700) var(--ember-950);
 
   /* Glow */
-  --gradient-accent: linear-gradient(135deg, var(--amber-300), var(--tangerine-glow) 45%, var(--flame-600));
-  --glow-accent: 0 0 0 1px rgb(255 122 46 / 0.55), 0 10px 44px -8px rgb(255 122 46 / 0.65);
-  --glow-strong: 0 0 0 1px rgb(255 176 103 / 0.7), 0 14px 64px -6px rgb(255 122 46 / 0.85);
-  --glow-soft: 0 0 70px -12px rgb(255 122 46 / 0.4);
-  --glow-text: 0 0 28px rgb(255 122 46 / 0.45);
-  --aurora-1: rgb(255 122 46 / 0.34); --aurora-2: rgb(255 90 31 / 0.22); --aurora-3: rgb(181 140 198 / 0.18);
-  --ring-glow: rgb(255 122 46 / 0.5);
+  --gradient-accent: linear-gradient(135deg, var(--sky-300), var(--sky-glow) 45%, var(--sky-600));
+  --glow-accent: 0 0 0 1px rgb(127 178 245 / 0.55), 0 10px 44px -8px rgb(127 178 245 / 0.65);
+  --glow-strong: 0 0 0 1px rgb(183 210 251 / 0.7), 0 14px 64px -6px rgb(127 178 245 / 0.85);
+  --glow-soft: 0 0 70px -12px rgb(127 178 245 / 0.4);
+  --glow-text: 0 0 28px rgb(127 178 245 / 0.45);
+  --aurora-1: rgb(127 178 245 / 0.34); --aurora-2: rgb(79 134 224 / 0.22); --aurora-3: rgb(181 140 198 / 0.18);
+  --ring-glow: rgb(127 178 245 / 0.5);
   --sheen: rgb(255 255 255 / 0.35);
 
   /* Paper: the resume sheets drawn on the dark ground keep the light palette. */
   --paper: var(--oat-50); --paper-ink: var(--plum-900); --paper-dim: var(--oat-400);
-  --paper-line: var(--plum-300); --paper-rule: var(--tangerine-glow);
-  --paper-held-bg: var(--tangerine-100); --paper-held-text: var(--tangerine-800);
+  --paper-line: var(--plum-300); --paper-rule: var(--sky-glow);
+  --paper-held-bg: var(--sky-100); --paper-held-text: var(--sky-800);
 }
 html:has(.ember) { background: var(--ember-950); }

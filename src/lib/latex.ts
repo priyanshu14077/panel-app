@@ -68,9 +68,18 @@ function section(doc: ResumeDoc, name: ResumeDoc["order"][number]): string {
         .map((p) => {
           // No underline here: it collides with the first bullet below.
           const link = p.url ? href(p.url, displayUrl(p.url), false) : "";
-          // A long stack runs into the right-aligned link; four is what fits.
-          const stack = p.stack.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 4).join(", ");
-          return `      \\resumeProjectHeading\n          {\\textbf{${escapeTex(p.name)}} $|$ \\emph{${escapeTex(stack)}}}{${link}}\n${itemList(known(p.bullets))}`;
+          // A long stack runs into the right-aligned link, so it gets what is
+          // left of the line after the name and the link.
+          // A bold name is about 1.2 characters wide per character of italic.
+          const room = 84 - Math.ceil(p.name.length * 1.2) - (p.url ? displayUrl(p.url).length : 0);
+          const stack = p.stack
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .slice(0, 4)
+            .reduce((kept, s) => (kept.join(", ").length + s.length + 2 <= room ? [...kept, s] : kept), [] as string[])
+            .join(", ");
+          return `      \\resumeProjectHeading\n          {\\textbf{${escapeTex(p.name)}}${stack ? ` $|$ \\emph{${escapeTex(stack)}}` : ""}}{${link}}\n${itemList(known(p.bullets))}`;
         })
         .join("")}    \\resumeSubHeadingListEnd\n\n`;
     case "skills": {

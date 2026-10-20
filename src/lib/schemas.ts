@@ -149,3 +149,21 @@ export interface Board {
   notes: string;
   sent: Partial<Record<Writeup, string>>; // date each write-up was sent
 }
+
+// The terms an applicant tracking system matches a resume against, as the
+// posting writes them.
+export const ATS_KINDS = ["language", "framework", "tool", "platform", "practice", "domain", "soft-skill", "certification", "degree"] as const;
+
+export const AtsTerms = z.object({
+  title: z.string().describe("The job title exactly as the posting writes it, without the company."),
+  terms: z.array(
+    z.object({
+      term: z.string().describe("Exactly as the posting spells it, e.g. 'PostgreSQL', 'CI/CD', 'distributed systems'."),
+      aliases: z.array(z.string()).describe("Other spellings a tracking system treats as the same term: abbreviations and full forms, e.g. 'Postgres' for PostgreSQL, 'K8s' for Kubernetes. Empty when none."),
+      kind: z.enum(ATS_KINDS),
+      required: z.boolean().describe("True when the posting lists it as a requirement; false for nice-to-have or merely mentioned."),
+    }),
+  ),
+});
+export type AtsTerms = z.infer<typeof AtsTerms>;
+export type AtsTerm = AtsTerms["terms"][number];

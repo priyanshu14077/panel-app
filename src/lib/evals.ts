@@ -4,8 +4,9 @@ import { z } from "zod";
 import { askStructured } from "./claude";
 import { knowledgeDigest, loadKnowledge } from "./knowledge/cards";
 import { readProfile, resumeText } from "./files";
-import { KNOWLEDGE_DIR, PANEL_DIR, safeSegment } from "./paths";
-import type { Run } from "./pipeline";
+import { KNOWLEDGE_DIR } from "./paths";
+import { BANNED } from "./guardrails";
+import { loadRun, saveRun, type Run } from "./pipeline";
 import { LIMITS, NEEDS, type ResumeDoc } from "./schemas";
 
 export type Status = "pass" | "warn" | "fail" | "skip";
@@ -23,23 +24,7 @@ export interface JudgeResult {
   claims: { line: string; verdict: "supported" | "partly" | "unsupported"; evidence: string }[];
 }
 
-// Phrases that mark generic, padded writing. Checked in emails, outreach and chat answers.
-export const BANNED = [
-  "passionate",
-  "thrilled",
-  "excited to",
-  "leverage",
-  "delve",
-  "synergy",
-  "hope this email finds you",
-  "hope this finds you",
-  "just bumping",
-  "i am writing to",
-  "dynamic team",
-  "fast-paced environment",
-  "results-driven",
-  "game-changer",
-];
+export { BANNED } from "./guardrails";
 
 const words = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
 const norm = (s: string) => s.toLowerCase().replace(/[,\s]+/g, " ");
@@ -119,6 +104,13 @@ export async function evaluateRun(run: Run): Promise<EvalResult[]> {
     out.push(result("links-real", "No placeholder links", "resume", bad.length ? "fail" : "pass", bad.join(", ") || `${c.links.length} links`));
   } else {
     out.push(result("one-page", "PDF is one page", "resume", "fail", "no PDF"));
+  }
+  const ats = run.ats?.after;
+  if (ats) {
+    const before = run.ats?.before ? `${run.ats.before.score}% → ` : "";
+    out.push(result("ats-match", "ATS keyword match is at least 75%", "resume", ats.score >= 75 ? "pass" : ats.score >= 55 ? "warn" : "fail", `${before}${ats.score}%`));
+    const failed = ats.checks.filter((c) => !c.pass);
+    out.push(result("ats-format", "ATS format checks pass", "resume", failed.length ? "fail" : "pass", failed.map((c) => `${c.name}: ${c.detail}`).join("; ") || `${ats.checks.length} checks`));
   }
   const open = s.questions.length;
   out.push(result("open-questions", "Open questions left", "resume", open === 0 ? "pass" : "warn", `${open} unanswered; their lines are left out of the PDF`));
@@ -225,9 +217,8 @@ export async function runJudge(run: Run): Promise<JudgeResult> {
     tier: "writer", tag: { runId: run.id, action: "eval:judge" },
   });
   const judge: JudgeResult = { at: new Date().toISOString(), claims };
-  const file = path.join(PANEL_DIR, safeSegment(run.id), "run.json");
-  const saved = JSON.parse(await fs.readFile(file, "utf8")) as Run;
+  const saved = await loadRun(run.id);
   saved.judge = judge;
-  await fs.writeFile(file, JSON.stringify(saved, null, 2));
+  await saveRun(saved);
   return judge;
 }

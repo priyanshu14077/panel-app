@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { z } from "zod";
+import { runSpend } from "./db";
 import { recordUsage, type UsageTag } from "./usage";
 
 const HAIKU = "claude-haiku-5-5";
@@ -30,6 +31,19 @@ function getClient(): Anthropic {
 }
 
 export class RefusalError extends Error {}
+export class BudgetError extends Error {}
+
+// A hard ceiling on what one run may spend, so a loop of retries, rebuilds or
+// chat turns can never run away. RUN_BUDGET_USD in .env.local changes it.
+const parsedBudget = Number(process.env.RUN_BUDGET_USD);
+export const RUN_BUDGET_USD = parsedBudget > 0 ? parsedBudget : 1;
+
+function checkBudget(tag: UsageTag | undefined): void {
+  if (!tag?.runId) return;
+  const spent = runSpend(tag.runId);
+  if (spent >= RUN_BUDGET_USD)
+    throw new BudgetError(`This run has spent $${spent.toFixed(2)} of its $${RUN_BUDGET_USD.toFixed(2)} budget. Start a new run, or raise RUN_BUDGET_USD in .env.local.`);
+}
 
 type Effort = "low" | "medium" | "high";
 type Message = Anthropic.Beta.BetaMessageParam;
@@ -47,6 +61,7 @@ async function finalOnTier<M extends Anthropic.Beta.BetaMessage>(
   tag: UsageTag | undefined,
   start: (model: string) => { finalMessage(): Promise<M> },
 ): Promise<M> {
+  checkBudget(tag);
   const model = PROFILE_MODELS[tier];
   let message = await start(model).finalMessage();
   await recordUsage(tag, message.model, message.usage);
@@ -109,7 +124,8 @@ export async function askStructured<S extends z.ZodType>(opts: {
   const message = await finalOnTier(opts.tier, opts.tag, (model) =>
     getClient().beta.messages.stream({
       model,
-      max_tokens: 64000,
+      // Twice the longest rebuild seen; a ceiling for runaway output, not a target.
+      max_tokens: 32000,
       system: opts.system,
       messages: [userTurn(opts.prompt, opts.context)],
       output_config: { effort: opts.effort, format: betaZodOutputFormat(opts.schema) },
@@ -132,7 +148,7 @@ export async function askResearch(opts: { system: string; prompt: string; tag?: 
         max_tokens: 16000,
         system: opts.system,
         messages,
-        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 10 }],
+        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 5 }],
         output_config: { effort: "medium" },
         ...fallbackFor(model),
       }),
@@ -151,6 +167,7 @@ export async function* streamChat(opts: {
   turns: { role: "user" | "assistant"; text: string }[];
   tag?: UsageTag;
 }): AsyncGenerator<string, string> {
+  checkBudget(opts.tag);
   const model = PROFILE_MODELS.writer;
   const messages: Message[] = opts.turns.map((t, i) =>
     i === 0

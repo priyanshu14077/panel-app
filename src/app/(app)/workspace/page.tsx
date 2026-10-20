@@ -4,6 +4,8 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { AddedProject, ChatTurn, DraftedEmail, DraftedSequence, Review, Run, RunEvent, Screen } from "@/lib/pipeline";
 import type { CvOption, JobDetails, ProjectIdea, Synthesis } from "@/lib/schemas";
+import type { GuardReport } from "@/lib/guardrails";
+import type { AtsReport, Placement, TermResult } from "@/lib/ats";
 import type { ResumeOption } from "@/lib/files";
 import { readNdjson } from "@/lib/read-ndjson";
 import { KnowledgePanel } from "@/app/knowledge-panel";
@@ -19,15 +21,17 @@ interface Sources {
   hasProfile: boolean;
   hasKey: boolean;
 }
-type Tab = "panel" | "interview" | "studio" | "qa" | "email";
+type Tab = "resume" | "panel" | "interview" | "studio" | "qa" | "email";
 
 const TABS: [Tab, string][] = [
+  ["resume", "Resume"],
   ["panel", "Panel"],
   ["interview", "Project interview"],
   ["studio", "Project studio"],
   ["qa", "Application Q&A"],
   ["email", "Outreach & email"],
 ];
+const isTab = (t: string | null): t is Tab => TABS.some(([id]) => id === t);
 const NEEDS = /\[\[needs:([a-z0-9-]+)\]\]/;
 
 const post = (url: string, body?: unknown) =>
@@ -83,7 +87,7 @@ function Workspace() {
         setError("");
         setCvOpen(false);
         setPdfVersion((v) => v + 1);
-        setTab(linkedTab === "interview" || linkedTab === "studio" || linkedTab === "qa" || linkedTab === "email" ? linkedTab : "panel");
+        setTab(isTab(linkedTab) ? linkedTab : r.synthesis ? "resume" : "panel");
       });
   }, [linked, linkedTab]);
 
@@ -119,6 +123,12 @@ function Workspace() {
         case "cv":
           patch((r) => ({ ...r, cv: e.cv }));
           setPdfVersion((v) => v + 1);
+          break;
+        case "ats":
+          patch((r) => ({ ...r, ats: e.ats }));
+          break;
+        case "guard":
+          patch((r) => ({ ...r, guard: { ...r.guard, [e.kind]: e.report } }));
           break;
         case "company":
           patch((r) => ({ ...r, companyBrief: e.brief, companyIdeas: e.ideas }));
@@ -218,7 +228,7 @@ function Workspace() {
             busy={busy}
             onCv={() => {
               setCvOpen(true);
-              setTab("panel");
+              setTab("resume");
             }}
           />
           <StatStrip run={showing} busy={busy} />
@@ -240,50 +250,22 @@ function Workspace() {
 
           {/* Keyed by tab so each switch fades the new panel in. */}
           <div key={tab} className="hp-fade flex flex-col gap-6">
-            {ready && tab === "panel" && cvOpen && (
-              <CvBuilder
-                key={showing.id}
+            {ready && tab === "resume" && (
+              <ResumeTab
                 run={showing as Run}
                 busy={busy}
                 version={pdfVersion}
-                onBuild={(picks) => act("cv", { picks })}
-                onClose={() => setCvOpen(false)}
+                cvOpen={cvOpen}
+                onCloseCv={() => setCvOpen(false)}
+                onBuildCv={(picks) => act("cv", { picks })}
+                onAnswers={(answers) => act("answers", { answers })}
+                onInterview={() => setTab("interview")}
               />
             )}
             {tab === "panel" && (
-              <TwoColumn
-                side={showing.pdf && showing.id ? <PdfPanel runId={showing.id} pdf={showing.pdf} version={pdfVersion} /> : showing.details && <DetailsCard details={showing.details} />}
-              >
+              <TwoColumn side={showing.details && <DetailsCard details={showing.details} />}>
                 <Reviews reviews={showing.reviews ?? []} busy={busy && !showing.synthesis} rescreens={showing.rescreens ?? []} />
-                {showing.synthesis && (
-                  <>
-                    <Mistakes synthesis={showing.synthesis} />
-                    {showing.synthesis.resume.projects.length > 0 && (
-                      <div className="card card--sunken flex flex-wrap items-center justify-between gap-4 p-5">
-                        <div>
-                          <h2>Refine a project with the agent</h2>
-                          <p className="mt-1 text-sm text-muted">
-                            {showing.synthesis.resume.projects.length} project{showing.synthesis.resume.projects.length === 1 ? "" : "s"} on this resume. The agent
-                            asks about what you built and rewrites the bullets in the posting&rsquo;s words.
-                          </p>
-                        </div>
-                        <button className="btn btn--primary" onClick={() => setTab("interview")}>
-                          Open the project interview
-                        </button>
-                      </div>
-                    )}
-                    {showing.synthesis.questions.length > 0 && (
-                      <Questions
-                        key={showing.synthesis.questions.map((q) => q.id).join()}
-                        synthesis={showing.synthesis}
-                        busy={busy}
-                        onSubmit={(answers) => act("answers", { answers })}
-                      />
-                    )}
-                    <IdeaGrid title="Projects to build" ideas={showing.synthesis.projects} />
-                  </>
-                )}
-                {showing.pdf && showing.details && <DetailsCard details={showing.details} />}
+                {showing.synthesis && <Mistakes synthesis={showing.synthesis} />}
               </TwoColumn>
             )}
 
@@ -296,6 +278,7 @@ function Workspace() {
                 busy={busy}
                 pdfVersion={pdfVersion}
                 onResearch={() => act("company")}
+                onSuggest={() => act("ideas")}
                 onAddProject={(p) => act("projects", p)}
               />
             )}
@@ -497,6 +480,194 @@ function NewRun({
   );
 }
 
+// ---------- Resume ----------
+
+function ResumeTab({
+  run,
+  busy,
+  version,
+  cvOpen,
+  onCloseCv,
+  onBuildCv,
+  onAnswers,
+  onInterview,
+}: {
+  run: Run;
+  busy: boolean;
+  version: number;
+  cvOpen: boolean;
+  onCloseCv: () => void;
+  onBuildCv: (picks: string[]) => void;
+  onAnswers: (a: Record<string, string>) => void;
+  onInterview: () => void;
+}) {
+  const [doc, setDoc] = useState<"resume" | "cv">(cvOpen && run.cv ? "cv" : "resume");
+  const s = run.synthesis!;
+  const showCv = doc === "cv" && run.cv;
+  return (
+    <div className="grid items-start gap-6 min-[1100px]:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="flex min-w-0 flex-col gap-3">
+        {run.cv && (
+          <div role="tablist" aria-label="Document" className="segmented self-start">
+            <button role="tab" aria-selected={doc === "resume"} onClick={() => setDoc("resume")}>
+              One-page resume
+            </button>
+            <button role="tab" aria-selected={doc === "cv"} onClick={() => setDoc("cv")}>
+              Two-page CV
+            </button>
+          </div>
+        )}
+        {showCv ? <PdfPanel runId={run.id} pdf={run.cv!} version={version} cv /> : run.pdf && <PdfPanel runId={run.id} pdf={run.pdf} version={version} />}
+      </div>
+      <aside className="flex min-w-0 flex-col gap-6 min-[1100px]:sticky min-[1100px]:top-6">
+        {cvOpen && <CvBuilder key={run.id} run={run} busy={busy} onBuild={onBuildCv} onClose={onCloseCv} />}
+        {run.ats?.after && <AtsMatch before={run.ats.before} after={run.ats.after} />}
+        <Checks report={run.guard?.[showCv ? "CV" : "Resume"]} />
+        {s.questions.length > 0 && <Questions key={s.questions.map((q) => q.id).join()} synthesis={s} busy={busy} onSubmit={onAnswers} />}
+        {s.resume.projects.length > 0 && (
+          <Card sunken className="p-5">
+            <h2>Sharpen a project</h2>
+            <p className="mt-1 text-sm text-muted">The agent asks what you built and rewrites its bullets in the posting&rsquo;s words.</p>
+            <button className="btn btn--primary mt-4" onClick={onInterview}>
+              Open the project interview
+            </button>
+          </Card>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+const PLACEMENTS: [Placement, string, string][] = [
+  ["body", "Shown in use", "badge--pass"],
+  ["skills", "Only in Skills", "badge--warn"],
+  ["material", "You have it, the resume doesn't say so", "badge--accent"],
+  ["absent", "Not in your material: answer a question or build it", "badge--neutral"],
+];
+
+// How the PDF matches the posting's terms, read the way a tracker reads it:
+// parsed back to plain text.
+function AtsMatch({ before, after }: { before?: AtsReport; after: AtsReport }) {
+  const required = after.terms.filter((t) => t.required && t.kind !== "soft-skill");
+  const covered = required.filter((t) => t.placement === "body" || t.placement === "skills").length;
+  const tone = after.score >= 75 ? "badge--pass" : after.score >= 55 ? "badge--warn" : "badge--fail";
+  const failed = after.checks.filter((c) => !c.pass);
+  return (
+    <Card title="ATS match" action={<span className={`badge ${tone}`}>{after.score >= 75 ? "strong" : after.score >= 55 ? "fair" : "weak"}</span>} className="p-5">
+      <div className="flex items-baseline gap-3">
+        {before && (
+          <>
+            <span className="mono text-lg text-muted">{before.score}%</span>
+            <span className="verdict-arrow" aria-label="then">
+              →
+            </span>
+          </>
+        )}
+        <span className="kpi-value">
+          <CountUp to={after.score} duration={700} />%
+        </span>
+      </div>
+      <p className="mt-1 text-sm text-muted">
+        Posting terms found in the parsed PDF, required ones weighted three times. <span className="mono">{covered}</span> of{" "}
+        <span className="mono">{required.length}</span> required terms are on the page.
+      </p>
+      {after.added.length > 0 && <p className="mt-2 text-sm">Added to Skills from your material: {after.added.join(", ")}.</p>}
+      <div className="mt-4 flex flex-col gap-3">
+        {PLACEMENTS.map(([placement, label, badge]) => {
+          const terms = after.terms.filter((t) => t.placement === placement);
+          if (!terms.length) return null;
+          return (
+            <div key={placement}>
+              <p className="text-xs font-semibold text-muted">{label}</p>
+              <ul className="mt-1 flex flex-wrap gap-1.5">
+                {terms.map((t) => (
+                  <li key={t.term}>
+                    <TermChip term={t} badge={badge} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+      <details className="mt-4 border-t border-line-subtle pt-3">
+        <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
+          <Chevron />
+          Format checks: {failed.length ? `${failed.length} to fix` : "all pass"}
+        </summary>
+        <ul className="mt-2 flex flex-col gap-1.5 text-sm">
+          {after.checks.map((c) => (
+            <li key={c.id} className="flex items-start gap-2">
+              <span className={`badge ${c.pass ? "badge--pass" : "badge--fail"}`}>{c.pass ? "pass" : "fix"}</span>
+              <span>
+                {c.name}
+                <span className="block text-xs text-muted">{c.detail}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </Card>
+  );
+}
+
+function TermChip({ term: t, badge }: { term: TermResult; badge: string }) {
+  const tip = [t.required ? "Required" : "Nice to have", t.aliases.length ? `also matches ${t.aliases.join(", ")}` : "", t.evidence ? `backed by: "${t.evidence}"` : "", t.count ? `${t.count}× on the page` : ""]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <span className={`badge ${badge} whitespace-normal ${t.required ? "font-semibold" : ""}`} title={tip}>
+      {t.term}
+      {t.required && <span aria-label="required">*</span>}
+    </span>
+  );
+}
+
+// What the checks changed after the writer finished, and anything they could
+// not fix.
+function Checks({ report }: { report?: GuardReport & { at: string } }) {
+  if (!report) return null;
+  const changes = report.fixed.length + report.rewritten;
+  return (
+    <Card title="Checks" action={<span className={`badge ${report.remaining.length ? "badge--warn" : "badge--pass"}`}>{report.remaining.length ? `${report.remaining.length} to look at` : "all pass"}</span>} className="p-5">
+      <p className="text-sm text-muted">
+        Dates, links, line length, bracketed tool lists and filler.{" "}
+        {changes ? (
+          <>
+            <span className="mono">{report.rewritten}</span> line{report.rewritten === 1 ? "" : "s"} tightened, <span className="mono">{report.fixed.length}</span> other fix
+            {report.fixed.length === 1 ? "" : "es"}.
+          </>
+        ) : (
+          "Nothing needed changing."
+        )}
+      </p>
+      {report.fixed.length > 0 && (
+        <details className="mt-3">
+          <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
+            <Chevron />
+            What changed
+          </summary>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+            {report.fixed.map((f) => (
+              <li key={f}>{f}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {report.remaining.length > 0 && (
+        <ul className="mt-3 flex flex-col gap-3">
+          {report.remaining.map((i) => (
+            <li key={i.id} className="text-sm">
+              <p className="mistake__quote break-words">{i.text.replace(NEEDS, "").trim()}</p>
+              <p className="mt-1 text-muted">{i.problems.join("; ")}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 // ---------- Run header ----------
 
 function RunHeader({ run, onNew, onCv, busy }: { run: Partial<Run>; onNew: () => void; onCv: () => void; busy: boolean }) {
@@ -554,6 +725,12 @@ function StatStrip({ run, busy }: { run: Partial<Run>; busy: boolean }) {
           </span>
           {after ? <Verdict verdict={after.verdict} /> : <span className={`verdict verdict--pending ${busy ? "streaming" : ""}`}>{busy ? "AFTER REBUILD" : "NOT RUN"}</span>}
         </div>
+        {run.ats?.after && (
+          <p className="mono mt-2 text-xs text-muted">
+            Keyword match {run.ats.before ? `${run.ats.before.score}% → ` : ""}
+            {run.ats.after.score}%
+          </p>
+        )}
       </Stat>
       <Stat label="Readers who would advance it">
         <p className="kpi-value">
@@ -592,42 +769,38 @@ function Reviews({ reviews, busy, rescreens }: { reviews: Review[]; busy: boolea
   const pending = busy ? Math.max(0, 7 - reviews.length) : 0;
   const latest = rescreens.at(-1);
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2>The panel</h2>
-        <span className="mono text-sm text-muted">{reviews.length} / 7 in</span>
-      </div>
-      <div aria-live="polite" className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
+    <Card title="The panel" action={<span className="mono text-sm text-muted">{reviews.length} / 7 in</span>} className="p-5">
+      <ul aria-live="polite" className="flex flex-col divide-y divide-line-subtle">
         {reviews.map((r) => (
-          <details key={r.id} className="card reviewer p-5">
-            <summary className="flex flex-col gap-3">
-              <span className="flex items-start justify-between gap-3">
-                <span className="reviewer__role">{r.name}</span>
+          <li key={r.id}>
+            <details className="reviewer-row py-3">
+              <summary className="grid cursor-pointer grid-cols-[minmax(0,11rem)_auto_minmax(0,1fr)_auto] items-center gap-3 max-sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                <span className="reviewer__role truncate">{r.name}</span>
+                <Verdict verdict={r.verdict} reader={r.id !== "screen"} />
+                <span className="truncate text-sm text-muted max-sm:hidden">{firstLine(r.text)}</span>
                 <Chevron />
-              </span>
-              <Verdict verdict={r.verdict} reader={r.id !== "screen"} />
-              <span className="line-clamp-3 text-sm text-muted">{firstLine(r.text)}</span>
-            </summary>
-            <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{r.text}</p>
-          </details>
+              </summary>
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{r.text}</p>
+            </details>
+          </li>
         ))}
         {Array.from({ length: pending }, (_, i) => (
-          <div key={i} className="card reviewer p-5">
+          <li key={i} className="grid grid-cols-[minmax(0,11rem)_auto] items-center gap-3 py-3">
             <span className="reviewer__role">Reviewer {reviews.length + i + 1}</span>
             <Verdict pending />
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
       {latest && (
-        <details className="card card--sunken p-5">
-          <summary className="flex items-center gap-2 font-semibold">
+        <details className="mt-3 border-t border-line-subtle pt-3">
+          <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
             <Chevron />
             Why the re-screen gave <Verdict verdict={latest.verdict} />
           </summary>
           <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{latest.text}</p>
         </details>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -638,14 +811,18 @@ function firstLine(text: string): string {
   return body.replace(/[*#>]/g, "").trim();
 }
 
+const MISTAKES_SHOWN = 5;
+
 function Mistakes({ synthesis }: { synthesis: Synthesis }) {
+  const [all, setAll] = useState(false);
   const n = synthesis.mistakes.length;
+  const shown = all ? synthesis.mistakes : synthesis.mistakes.slice(0, MISTAKES_SHOWN);
   // The list is ranked worst first; the top third is high severity.
   const severity = (i: number) => (i < Math.ceil(n / 3) ? "mistake--high" : i < Math.ceil((2 * n) / 3) ? "" : "mistake--low");
   return (
     <Card title={`What is wrong, worst first`} action={<span className="mono text-sm text-muted">{n} found</span>}>
       <ol className="flex flex-col gap-5">
-        {synthesis.mistakes.map((m, i) => (
+        {shown.map((m, i) => (
           <li key={i} className={`mistake ${severity(i)}`} style={{ "--i": i } as React.CSSProperties}>
             <span className="mistake__bar" aria-hidden />
             <div className="flex min-w-0 flex-col gap-2">
@@ -656,6 +833,11 @@ function Mistakes({ synthesis }: { synthesis: Synthesis }) {
           </li>
         ))}
       </ol>
+      {n > MISTAKES_SHOWN && (
+        <button type="button" className="link-btn mt-4 text-sm" onClick={() => setAll((v) => !v)}>
+          {all ? "Show the worst five" : `Show all ${n}`}
+        </button>
+      )}
     </Card>
   );
 }
@@ -807,13 +989,11 @@ const RELEVANCE_BADGE: Record<CvOption["relevance"], string> = { high: "badge--p
 function CvBuilder({
   run,
   busy,
-  version,
   onBuild,
   onClose,
 }: {
   run: Run;
   busy: boolean;
-  version: number;
   onBuild: (picks: string[]) => void;
   onClose: () => void;
 }) {
@@ -856,7 +1036,6 @@ function CvBuilder({
     });
 
   return (
-    <>
       <Card
         title="Create a CV"
         action={
@@ -921,8 +1100,6 @@ function CvBuilder({
           )}
         </div>
       </Card>
-      {run.cv && <PdfPanel runId={run.id} pdf={run.cv} version={version} cv />}
-    </>
   );
 }
 
@@ -988,12 +1165,14 @@ function Studio({
   busy,
   pdfVersion,
   onResearch,
+  onSuggest,
   onAddProject,
 }: {
   run: Run;
   busy: boolean;
   pdfVersion: number;
   onResearch: () => void;
+  onSuggest: () => void;
   onAddProject: (p: AddedProject) => void;
 }) {
   const [project, setProject] = useState<AddedProject>(emptyProject);
@@ -1043,7 +1222,20 @@ function Studio({
         )}
       </Card>
       {run.companyIdeas && <IdeaGrid title="Ideas aimed at the company" ideas={run.companyIdeas} onUse={applyIdea} />}
-      <IdeaGrid title="Ideas that close the panel's gaps" ideas={run.synthesis!.projects} onUse={applyIdea} />
+      {run.synthesis!.projects.length > 0 ? (
+        <IdeaGrid title="Ideas that close the panel's gaps" ideas={run.synthesis!.projects} onUse={applyIdea} />
+      ) : (
+        <Card
+          title="Projects that close the panel's gaps"
+          action={
+            <button className="btn" disabled={busy} onClick={onSuggest}>
+              {busy ? "Working…" : "Suggest projects"}
+            </button>
+          }
+        >
+          <p className="text-sm text-muted">Short builds aimed at what the panel found missing, often extending a repo you already have. Written when you ask, so runs you don&rsquo;t pursue cost less.</p>
+        </Card>
+      )}
 
       <div ref={formRef}>
         <Card title="Add a project you built">
